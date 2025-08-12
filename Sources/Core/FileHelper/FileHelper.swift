@@ -8,8 +8,13 @@ import Foundation
 import os.log
 
 public struct FileHelper {
+    
     private static let logger = Logger(subsystem: "SwiftMind", category: "FileHelper")
-    private static let maxFileSize = 1024 * 1024 // 1MB
+    
+    private static var maxFileSize: Int {
+        let config = SwiftMindConfig()
+        return config.maxFileSize + 1024
+    }
     private static let supportedExtensions: Set<String> = ["swift"]
     
     public static func readCode(atAbsolutePath absolutePath: String) throws -> (fileName: String, code: String) {

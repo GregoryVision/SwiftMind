@@ -10,6 +10,8 @@ import ArgumentParser
 import os.log
 import Core
 
+// Что если output не пустой? Может сделать записть типа как DocInserter только TestsInserter?
+
 @available(macOS 13.0, *)
 struct Test: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate tests for a given Swift file")
@@ -41,36 +43,26 @@ struct Test: AsyncParsableCommand {
         let resolvedFileURL = URL(fileURLWithPath: filePath, relativeTo: baseURL).standardized
 
         do {
-            let cfg = try loadConfig()
-            let (fileName, satitizedCode) = try prepareMainFile(at: resolvedFileURL, cfg: cfg)
+            let (fileName, satitizedCode) = try prepareMainFile(at: resolvedFileURL, cfg: SwiftMind.config)
             let additional = try await loadAdditionalContext(from: contextPaths, base: baseURL)
-            let testsDir = try resolveOutputDirectory(from: cfg, resolvedFileURL: resolvedFileURL)
-            try await generateTests(for: satitizedCode, fileName: fileName, additional: additional, testsDir: testsDir)
+            let testsDir = try resolveOutputDirectory(from: SwiftMind.config, resolvedFileURL: resolvedFileURL)
+            try await generateTests(for: satitizedCode, fileName: fileName, additional: additional, cfg: SwiftMind.config)
         } catch let error as SwiftMindError {
             Self.logger.error("❌ Error: \(error.localizedDescription)")
             throw ExitCode.failure
         } catch {
             Self.logger.error("❌ Unexpected error: \(error.localizedDescription)")
-            if verbose {
-                Self.logger.info("Details: \(error)")
-            }
             throw ExitCode.failure
         }
     }
     
-    private func loadConfig() throws -> SwiftMindConfig {
-        let cfg = SwiftMindConfig.load()
-        try cfg.validate()
-        return cfg
-    }
-    
-    private func prepareMainFile(at resolvedFileURL: URL, cfg: SwiftMindConfig) throws -> (String, String) {
+    private func prepareMainFile(at resolvedFileURL: URL, cfg: SwiftMindConfigProtocol) throws -> (String, String) {
         let (fileName, code) = try FileHelper.readCode(atAbsolutePath: resolvedFileURL.path)
         let satitizedCode = try PromptSanitizer.sanitize(code, maxLength: cfg.promptMaxLength)
         return (fileName, satitizedCode)
     }
     
-    private func resolveOutputDirectory(from cfg: SwiftMindConfig, resolvedFileURL: URL) throws -> URL {
+    private func resolveOutputDirectory(from cfg: SwiftMindConfigProtocol, resolvedFileURL: URL) throws -> URL {
         return try FileHelper.resolveTestsDirectory(
             cliOverride: output,
             cfg: cfg,
@@ -78,26 +70,31 @@ struct Test: AsyncParsableCommand {
         )
     }
     
-    private func generateTests(for code: String, fileName: String, additional: String?, testsDir: URL) async throws {
+    private func generateTests(for code: String,
+                               fileName: String,
+                               additional: String?,
+                               cfg: SwiftMindConfigProtocol) async throws {
         if functions.isEmpty {
             Self.logger.info("Generating tests for entire file")
-            let txt = try await AIUseCases.generateTestsForEntireFile(code,
+            let txt = try await SwiftMind.aiUseCases.generateTestsForEntireFile(code,
                                                                       customPrompt: prompt,
-                                                                      additionalContext: additional)
+                                                                      additionalContext: additional,
+                                                                      cfg: cfg)
             try saveTestFile(named: "\(fileName)Tests.swift",
                              content: txt,
-                             to: testsDir,
+                             to: cfg.testsDirectory.fileURL,
                              description: "Full file tests")
         } else {
             for fn in functions {
                 Self.logger.info("Generating tests for function: \(fn)")
-                let txt = try await AIUseCases.generateTests(for: code,
+                let txt = try await SwiftMind.aiUseCases.generateTests(for: code,
                                                              functionName: fn,
                                                              customPrompt: prompt,
-                                                             additionalContext: additional)
+                                                             additionalContext: additional,
+                                                             cfg: cfg)
                 try saveTestFile(named: "\(fileName)_\(fn)Tests.swift",
                                  content: txt,
-                                 to: testsDir,
+                                 to: cfg.testsDirectory.fileURL,
                                  description: "Tests for '\(fn)'")
             }
         }

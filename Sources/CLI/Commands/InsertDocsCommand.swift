@@ -33,15 +33,14 @@ struct InsertDocs: AsyncParsableCommand {
     func run() async throws {
         do {
             Self.logger.info("Starting documentation insertion for: \(filePath)")
-            let cfg = SwiftMindConfig.load()
-            let (resolvedFileURL, code, sanitizedCode) = try prepareCode(from: filePath)
+            let (resolvedFileURL, code, sanitizedCode) = try prepareCode(from: filePath, cfg: SwiftMind.config)
             let collector = try collectDeclarations(from: sanitizedCode)
             
-            let generatedDocs = try await generateDocs(for: sanitizedCode, style: style, cfg: cfg)
+            let generatedDocs = try await generateDocs(for: sanitizedCode, style: style, cfg: SwiftMind.config)
             try validateGeneratedDocs(generatedDocs)
             
             if generatedDocs.count != collector.declarations.count {
-                try await fallbackInsertDocs(sanitizedCode, to: resolvedFileURL, cfg: cfg)
+                try await fallbackInsertDocs(sanitizedCode, to: resolvedFileURL, cfg: SwiftMind.config)
                 return
             }
             
@@ -52,11 +51,10 @@ struct InsertDocs: AsyncParsableCommand {
         }
     }
     
-    private func prepareCode(from path: String) throws -> (URL, String, String) {
+    private func prepareCode(from path: String, cfg: SwiftMindConfigProtocol) throws -> (URL, String, String) {
         let resolvedFileURL = FileHelper.resolve(filePath: path)
         try validateFile(at: resolvedFileURL)
         let (_, code) = try FileHelper.readCode(atAbsolutePath: resolvedFileURL.path)
-        let cfg = SwiftMindConfig.load()
         let sanitizedCode = try PromptSanitizer.sanitize(code, maxLength: cfg.promptMaxLength)
         return (resolvedFileURL, code, sanitizedCode)
     }
@@ -69,15 +67,15 @@ struct InsertDocs: AsyncParsableCommand {
         return collector
     }
     
-    private func generateDocs(for code: String, style: DocumentationStyle, cfg: SwiftMindConfig) async throws -> [String] {
-        let resultText = try await AIUseCases.generateDocumentation(for: code, style: style, declarations: cfg.documentationDeclarations, returnFormat: .separateBlocks)
+    private func generateDocs(for code: String, style: DocumentationStyle, cfg: SwiftMindConfigProtocol) async throws -> [String] {
+        let resultText = try await SwiftMind.aiUseCases.generateDocumentation(for: code, style: style, declarations: cfg.documentationDeclarations, returnFormat: .separateBlocks, cfg: cfg)
         let generatedDocs = resultText.components(separatedBy: "\n\n").filter { !$0.isEmpty }
         return generatedDocs
     }
     
-    private func fallbackInsertDocs(_ code: String, to fileURL: URL, cfg: SwiftMindConfig) async throws {
+    private func fallbackInsertDocs(_ code: String, to fileURL: URL, cfg: SwiftMindConfigProtocol) async throws {
         Self.logger.warning("Mismatch between declarations and documentation blocks. Falling back to full code insertion.")
-        let fullDocCode = try await AIUseCases.generateDocumentation(for: code, style: style, declarations: cfg.documentationDeclarations, returnFormat: .fullCode)
+        let fullDocCode = try await SwiftMind.aiUseCases.generateDocumentation(for: code, style: style, declarations: cfg.documentationDeclarations, returnFormat: .fullCode, cfg: cfg)
         try fullDocCode.write(to: fileURL, atomically: true, encoding: .utf8)
         Self.logger.info("✍️ Full documentation inserted by AI into \(fileURL.path)")
     }

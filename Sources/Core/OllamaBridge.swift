@@ -9,21 +9,26 @@ import Foundation
 import os.log
 
 @available(macOS 13.0, *)
-public struct OllamaBridge: Sendable {
-    static let shared = OllamaBridge()
-    private let logger = Logger(subsystem: "SwiftMind", category: "OllamaBridge")
-    private var maxRetries: Int {
-        SwiftMindConfig.default.maxRetries
-    }
-    private var timeoutSeconds: Double {
-        SwiftMindConfig.default.timeoutSeconds
-    }
+public protocol OllamaBridgeProtocol {
+    func send(prompt: String, model: String) async throws -> String
+}
+
+@available(macOS 13.0, *)
+public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
     
-    // MARK: - Todo: Сделать экземпляром и добавить DI?
-    private init() {}
+    private let logger = Logger(subsystem: "SwiftMind", category: "OllamaBridge")
+    private let maxRetries: Int
+    private let timeoutSeconds: Double
+    
+    public init(maxRetries: Int,
+                timeoutSeconds: Double) {
+        
+        self.maxRetries = maxRetries
+        self.timeoutSeconds = timeoutSeconds
+    }
     
     // MARK: - Core Send Method
-    func send(prompt: String, model: String = "codellama") async throws -> String {
+    public func send(prompt: String, model: String = "codellama") async throws -> String {
         try await validateOllamaInstallation()
         
         logger.info("Sending prompt to Ollama (model: \(model), length: \(prompt.count))")
@@ -80,11 +85,11 @@ public struct OllamaBridge: Sendable {
     private func executeOllama(prompt: String, model: String) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
-                return try await runOllama(prompt: prompt, model: model)
+                return try await self.runOllama(prompt: prompt, model: model)
             }
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-                throw SwiftMindError.ollamaExecutionFailed(-1, "Timeout after \(timeoutSeconds) seconds")
+                try await Task.sleep(nanoseconds: UInt64(self.timeoutSeconds * 1_000_000_000))
+                throw SwiftMindError.ollamaExecutionFailed(-1, "Timeout after \(self.timeoutSeconds) seconds")
             }
 
             let result = try await group.next()!
@@ -92,6 +97,7 @@ public struct OllamaBridge: Sendable {
             return result
         }
     }
+    
     private func runOllama(prompt: String, model: String) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
             let task = Process()

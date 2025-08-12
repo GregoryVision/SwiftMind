@@ -2,20 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>timeoutSeconds</key>
+	<real>150</real>
+	<key>maxRetries</key>
+	<integer>3</integer>
 	<key>testsDirectory</key>
 	<string></string>
-    <key>defaultModel</key>
-        <string>codellama</string>
-        <key>tokenLimit</key>
-        <integer>16000</integer>
-        <key>documentationDeclarations</key>
-        <array>
-            <string>func</string>
-            <string>class</string>
-            <string>struct</string>
-            <string>init</string>
-            <string>enum</string>
-            <string>protocol</string>
-        </array>
+	<key>defaultModel</key>
+	<string>codellama</string>
+	<key>tokenLimit</key>
+	<integer>16000</integer>
+	<key>documentationDeclarations</key>
+	<array>
+		<string>func</string>
+		<string>class</string>
+		<string>struct</string>
+		<string>init</string>
+		<string>enum</string>
+		<string>protocol</string>
+	</array>
 </dict>
 </plist>

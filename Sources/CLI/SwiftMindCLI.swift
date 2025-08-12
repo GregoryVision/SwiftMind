@@ -2,73 +2,28 @@ import Core
 import Foundation
 import ArgumentParser
 import os.log
+
 import SwiftSyntax
+import SwiftParser
+
+// MARK: - VIPER module generating in progress
+//struct GenerateVIPERModule: ParsableCommand {
+//}
 
 @main
 struct SwiftMind: ParsableCommand {
+    
     static let configuration = CommandConfiguration(
         abstract: "AI CLI for Swift developers",
         subcommands: [Test.self],
         defaultSubcommand: Test.self
     )
+    static let config: SwiftMindConfigProtocol = SwiftMindConfig.load()
+    nonisolated(unsafe) static let ollamaBridge: OllamaBridgeProtocol = OllamaBridge(maxRetries: config.maxRetries, timeoutSeconds: config.timeoutSeconds)
+    nonisolated(unsafe) static let aiUseCases: AIUseCasesProtocol = AIUseCases(ollama: ollamaBridge, config: config)
 }
 
-@available(macOS 13.0, *)
-struct Explain: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Explain what Swift code does")
-    
-    @Argument(help: "The file to explain")
-    var filePath: String
-    
-    func run() async throws {
-        let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        let resolvedFileURL = URL(fileURLWithPath: filePath, relativeTo: baseURL).standardized
-        
-        do {
-            let (_, code) = try FileHelper.readCode(atAbsolutePath: resolvedFileURL.path)
-            let explanation = try await AIUseCases.explainCode(code)
-            
-            print("📝 Code Explanation:")
-            print(explanation)
-            
-        } catch let error as SwiftMindError {
-            print("❌ Error: \(error.localizedDescription)")
-            throw ExitCode.failure
-        }
-    }
-}
 
-// MARK: - AI Review in progress
-//struct Review: ParsableCommand {
-//    static let configuration = CommandConfiguration(abstract: "Perform AI code review and get improvement suggestions")
-//
-//    @Argument(help: "The file to review")
-//    var filePath: String
-//
-//    func run() throws {
-//        let fileURL = URL(fileURLWithPath: filePath)
-//        guard FileManager.default.fileExists(atPath: filePath) else {
-//            throw ValidationError("File not found: \(filePath)")
-//        }
-//
-//        let code = try String(contentsOf: fileURL)
-//        let prompt = """
-//        You are a senior iOS engineer. Review the following Swift code and suggest improvements in formatting, naming, architecture, and performance:
-//
-//        \(code)
-//        """
-//
-//        let resultText = try performRequest(withPrompt: prompt)
-//
-//        print("\n--- AI CODE REVIEW ---\n")
-//        print(resultText)
-//    }
-//}
-
-
-// MARK: - VIPER module generating in progress
-//struct GenerateVIPERModule: ParsableCommand {
-//}
 
 
 //func countTokens(for text: String) -> Int {

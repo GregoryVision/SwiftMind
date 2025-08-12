@@ -8,13 +8,27 @@
 import Foundation
 import os.log
 
-public struct SwiftMindConfig: Codable, Sendable {
+public protocol SwiftMindConfigProtocol: Sendable {
+    var testsDirectory: String { get }
+    var defaultModel: String { get }
+    var tokenLimit: Int { get }
+    var maxRetries: Int { get }
+    var timeoutSeconds: Double { get }
+    var documentationDeclarations: [String] { get }
+    var promptMaxLength: Int { get }
+    var maxFileSizeMB: Int { get }
+    var maxFileSize: Int { get }
+    func validate() throws
+}
+
+public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
     public private(set) var testsDirectory: String
     public private(set) var defaultModel: String
     public private(set) var tokenLimit: Int
     public private(set) var maxRetries: Int
     public private(set) var timeoutSeconds: Double
     public private(set) var documentationDeclarations: [String]
+    
     public var promptMaxLength: Int {
         switch defaultModel.lowercased() {
         case "codellama":
@@ -28,36 +42,46 @@ public struct SwiftMindConfig: Codable, Sendable {
         }
     }
     
+    public var maxFileSizeMB: Int { 1 } // Default 1 MB
+    public var maxFileSize: Int { maxFileSizeMB * 1024 * 1024 }
+    
     private static let logger = Logger(subsystem: "SwiftMind", category: "Config")
-    
-    public static let `default` = SwiftMindConfig(
-        testsDirectory: "",
-        defaultModel: "codellama",
-        tokenLimit: 16000,
-        maxRetries: 3,
-        timeoutSeconds: 150.0,
-        documentationDeclarations: ["func", "class", "struct", "init", "enum", "protocol"]
-    )
-    
-    public static func load() -> SwiftMindConfig {
-        let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        
-        if let configURL = findConfigPlist(startingFrom: currentDir) {
-            logger.info("Found config at: \(configURL.path)")
-            
+
+    public init(
+        testsDirectory: String = "",
+        defaultModel: String = "codellama",
+        tokenLimit: Int = 16000,
+        maxRetries: Int = 3,
+        timeoutSeconds: Double = 150.0,
+        documentationDeclarations: [String] = ["func", "class", "struct", "init", "enum", "protocol"]
+    ) {
+        self.testsDirectory = testsDirectory
+        self.defaultModel = defaultModel
+        self.tokenLimit = tokenLimit
+        self.maxRetries = maxRetries
+        self.timeoutSeconds = timeoutSeconds
+        self.documentationDeclarations = documentationDeclarations
+    }
+
+    /// Loads config from a swiftmind.plist file at the given path.
+    public init(fromFile fileURL: URL) throws {
+        let data = try Data(contentsOf: fileURL)
+        self = try PropertyListDecoder().decode(SwiftMindConfig.self, from: data)
+    }
+
+    public static func load(startingFrom startDir: URL? = nil) -> SwiftMindConfig {
+        let start = startDir ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        if let url = findConfigPlist(startingFrom: start) {
+            Self.logger.info("Found config at: \(url.path)")
             do {
-                let data = try Data(contentsOf: configURL)
-                let config = try PropertyListDecoder().decode(SwiftMindConfig.self, from: data)
-                logger.info("Successfully loaded configuration")
-                return config
+                return try SwiftMindConfig(fromFile: url)
             } catch {
-                logger.warning("Failed to load config: \(error.localizedDescription). Using defaults.")
+                Self.logger.warning("Failed to load config: \(error.localizedDescription). Using defaults.")
             }
         } else {
-            logger.info("No config file found, using defaults")
+            Self.logger.info("No config file found, using defaults")
         }
-        
-        return .default
+        return SwiftMindConfig() // явный вызов базового init с дефолтами
     }
     
     public static func findConfigPlist(startingFrom directory: URL) -> URL? {

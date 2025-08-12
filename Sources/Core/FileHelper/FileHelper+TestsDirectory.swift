@@ -23,7 +23,7 @@ public extension FileHelper {
     /// - Returns: URL of an existing (or newly-created) directory for tests.
     static func resolveTestsDirectory(
         cliOverride: String?,
-        cfg: SwiftMindConfig,
+        cfg: SwiftMindConfigProtocol,
         fileAbsolutePath: String
     ) throws -> URL {
 

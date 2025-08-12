@@ -14,13 +14,15 @@ public final class DocInserter: SyntaxRewriter {
     private var declarationIndex = 0
     private var processedCount = 0
     private var skippedCount = 0
+    private let commentPrefix: String
     
     public var totalProcessed: Int { processedCount }
     public var totalSkipped: Int { skippedCount }
     
-    init(docs: [String], skipExisting: Bool) {
+    init(docs: [String], skipExisting: Bool, commentPrefix: String = "///") {
         self.docs = docs
         self.skipExisting = skipExisting
+        self.commentPrefix = commentPrefix
     }
     
     // MARK: - Function Declarations
@@ -89,25 +91,25 @@ public final class DocInserter: SyntaxRewriter {
             return continueVisiting(node)
         }
         
-        // Добавляем документацию
+        // Добавляем комментарии (документацию или REVIEW)
         let docText = docs[declarationIndex]
         declarationIndex += 1
         processedCount += 1
         
-        let documentedNode = addDocumentation(to: node, docText: docText)
+        let documentedNode = addComments(to: node, commentText: docText, commentPrefix: commentPrefix)
         return continueVisiting(documentedNode)
     }
     
-    private func addDocumentation(to node: DeclSyntax, docText: String) -> DeclSyntax {
-        let triviaElements: [TriviaPiece] = docText
+    /// Добавляет комментарии (например, документацию или REVIEW) перед декларацией.
+    private func addComments(to node: DeclSyntax, commentText: String, commentPrefix: String = "///") -> DeclSyntax {
+        let triviaElements: [TriviaPiece] = commentText
             .split(separator: "\n")
             .flatMap { line in
                 [
-                    .docLineComment("/// \(line)"),
+                    .docLineComment("\(commentPrefix) \(line)"),
                     .newlines(1)
                 ]
             }
-        
         let leadingTrivia = Trivia(pieces: triviaElements)
         return DeclSyntax(node.with(\.leadingTrivia, leadingTrivia + node.leadingTrivia))
     }

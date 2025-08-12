@@ -8,22 +8,41 @@
 import Foundation
 import os.log
 
-public struct AIUseCases {
+public protocol AIUseCasesProtocol {
+    func generateTests(for code: String, functionName: String, customPrompt: String?, additionalContext: String?, cfg: SwiftMindConfigProtocol) async throws -> String
+    func generateTestsForEntireFile(_ code: String, customPrompt: String?, additionalContext: String?, cfg: SwiftMindConfigProtocol) async throws -> String
+    func explainCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
+    func refactorCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
+    func summarizeCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
+    func generateDocumentation(for code: String, style: DocumentationStyle, declarations: [String], returnFormat: DocumentationReturnFormat, cfg: SwiftMindConfigProtocol) async throws -> String
+    func reviewCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
+}
+
+// ToDo: Разделить на разные юзкейсы?
+
+public final class AIUseCases: AIUseCasesProtocol {
     
-    private static let logger = Logger(subsystem: "SwiftMind", category: "AIUseCases")
+    private let logger = Logger(subsystem: "SwiftMind", category: "AIUseCases")
+    private let ollama: OllamaBridgeProtocol
+    private let config: SwiftMindConfigProtocol
     
-    public static func generateReadme(from source: String) throws -> String {
-        return """
-        # Auto-generated README
-        
-        Documentation for Swift file:
-        
-        ```swift
-        \(source)
-        ```
+    public init(ollama: OllamaBridgeProtocol = OllamaBridge(), config: SwiftMindConfigProtocol) {
+        self.ollama = ollama
+        self.config = config
+    }
+    
+    private var roleModelPromptInstruction: String {
+        """
+        You are a Senior iOS Developer who writes clean, maintainable Swift code.
+        Follow Apple's coding guidelines and best practices.
         """
     }
-    public static func generateTests(for code: String, functionName: String, customPrompt: String? = nil, additionalContext: String? = nil) async throws -> String {
+    
+    public func generateTests(for code: String,
+                              functionName: String,
+                              customPrompt: String? = nil,
+                              additionalContext: String? = nil,
+                              cfg: SwiftMindConfigProtocol) async throws -> String {
         logger.info("Generating tests for function: \(functionName)")
         let fileHeader = """
         This file contains the following Swift function:
@@ -39,7 +58,6 @@ public struct AIUseCases {
         """
         
         var addCtx: String? = additionalContext
-        
         if let additionalContext {
             addCtx = """
         This is additional context:
@@ -49,7 +67,6 @@ public struct AIUseCases {
         }
         
         var cusPrompt: String? = customPrompt
-        
         if let customPrompt {
             cusPrompt = """
         This is custom prompt from user:
@@ -58,12 +75,14 @@ public struct AIUseCases {
         """
         }
         
-        let prompt = [fileHeader, testInstruction, addCtx, cusPrompt].compactMap { $0 }.joined(separator: "\n\n")
-        
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        let prompt = [fileHeader, roleModelPromptInstruction, testInstruction, addCtx, cusPrompt].compactMap { $0 }.joined(separator: "\n\n")
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
     
-    public static func generateTestsForEntireFile(_ code: String, customPrompt: String? = nil, additionalContext: String? = nil) async throws -> String {
+    public func generateTestsForEntireFile(_ code: String,
+                                           customPrompt: String? = nil,
+                                           additionalContext: String? = nil,
+                                           cfg: SwiftMindConfigProtocol) async throws -> String {
         logger.info("Generating tests for entire file")
         let fileHeader = """
         Generate a complete Swift unit test file for the following source code:
@@ -71,7 +90,6 @@ public struct AIUseCases {
         \(code)
         """
         var addCtx: String? = additionalContext
-        
         if let additionalContext {
             addCtx = """
         This is additional context:
@@ -81,34 +99,53 @@ public struct AIUseCases {
         }
         
         var cusPrompt: String? = customPrompt
-        
         if let customPrompt {
             cusPrompt = """
         This is custom prompt from user:
         
         \(customPrompt)
+        
+        Use XCTest, avoid redundant tests, and ensure good naming conventions.
         """
         }
-        let prompt = [fileHeader, addCtx, cusPrompt].compactMap{ $0 }.joined(separator: "\n\n")
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        let prompt = [fileHeader, roleModelPromptInstruction, addCtx, cusPrompt].compactMap { $0 }.joined(separator: "\n\n")
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
     
-    public static func explainCode(_ code: String) async throws -> String {
-        let prompt = "Explain what the following Swift code does:\n\n\(code)"
-        return try await OllamaBridge.shared.send(prompt: prompt)
+    public func explainCode(_ code: String,
+                            cfg: SwiftMindConfigProtocol) async throws -> String {
+        let prompt = """
+        \(roleModelPromptInstruction)
+        
+        Analyze and explain the following Swift code. Provide a detailed yet concise explanation covering:
+        1. The main purpose and functionality of the code.
+        2. Key functions, classes, or structs and what they do.
+        3. Important parameters or return values.
+        4. Any potential issues, best practices, or improvements.
+
+        Swift code:
+        \(code)
+        """
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
     
-    public static func refactorCode(_ code: String) async throws -> String {
+    public func refactorCode(_ code: String,
+                             cfg: SwiftMindConfigProtocol) async throws -> String {
         let prompt = "Refactor and improve the following Swift code:\n\n\(code)"
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
-    
-    public static func summarizeCode(_ code: String) async throws -> String {
+    // MARK: Todo: Может быть объеденить с explain и передавать в параметр степень детализации?
+    public func summarizeCode(_ code: String,
+                              cfg: SwiftMindConfigProtocol) async throws -> String {
         let prompt = "Briefly summarize what this Swift code does:\n\n\(code)"
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
     
-    public static func generateDocumentation(for code: String, style: DocumentationStyle, declarations: [String], returnFormat: DocumentationReturnFormat) async throws -> String {
+    public func generateDocumentation(for code: String,
+                                      style: DocumentationStyle,
+                                      declarations: [String],
+                                      returnFormat: DocumentationReturnFormat,
+                                      cfg: SwiftMindConfigProtocol) async throws -> String {
         let styleInstruction = switch style {
         case .brief:
             "Write concise, single-line documentation focusing on what the element does."
@@ -136,6 +173,8 @@ public struct AIUseCases {
         let formattedDeclarations = declarations.map({"- \($0)"}).joined(separator: "\n")
         
         let prompt = """
+        \(roleModelPromptInstruction)
+        
         Generate Swift documentation comments for the following code. Follow these rules EXACTLY:
         
         1. Generate documentation ONLY for these declaration types:
@@ -156,25 +195,24 @@ public struct AIUseCases {
         
         \(code)
         """
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
     
-    public static func reviewCode(_ code: String) async throws -> String {
+    public func reviewCode(_ code: String,
+                           cfg: SwiftMindConfigProtocol) async throws -> String {
         let prompt = """
-        Perform an AI code review of the following Swift code. Identify issues, improvements, and adherence to best practices:
+        \(roleModelPromptInstruction)
+        
+        Perform a professional code review for the following Swift code.
+        Insert your review comments directly into the code using the following format:
+        - Use `// REVIEW:` comments above or beside the lines where issues, improvements, or best practices should be noted.
+        - Keep original code intact.
+        - Do not output additional explanation outside the code, only return the modified Swift code with inline comments.
+        
+        Swift code to review:
         
         \(code)
         """
-        return try await OllamaBridge.shared.send(prompt: prompt)
-    }
-    
-    public static func generateReadme(for code: String) async throws -> String {
-        let prompt = """
-        Generate a README.md based on this Swift code with a description of its purpose, a brief usage example, and key functions:
-        
-        \(code)
-        """
-        return try await OllamaBridge.shared.send(prompt: prompt)
+        return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
 }
-
