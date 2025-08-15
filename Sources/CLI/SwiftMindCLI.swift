@@ -10,6 +10,8 @@ import SwiftParser
 //struct GenerateVIPERModule: ParsableCommand {
 //}
 
+// ToDo: Вынести всю логику в Core
+
 @main
 struct SwiftMind: ParsableCommand {
     

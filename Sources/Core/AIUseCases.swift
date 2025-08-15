@@ -9,13 +9,36 @@ import Foundation
 import os.log
 
 public protocol AIUseCasesProtocol {
-    func generateTests(for code: String, functionName: String, customPrompt: String?, additionalContext: String?, cfg: SwiftMindConfigProtocol) async throws -> String
-    func generateTestsForEntireFile(_ code: String, customPrompt: String?, additionalContext: String?, cfg: SwiftMindConfigProtocol) async throws -> String
-    func explainCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
-    func refactorCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
-    func summarizeCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
-    func generateDocumentation(for code: String, style: DocumentationStyle, declarations: [String], returnFormat: DocumentationReturnFormat, cfg: SwiftMindConfigProtocol) async throws -> String
+    func generateTests(for code: String,
+                       functionName: String,
+                       customPrompt: String?,
+                       additionalContext: String?, cfg: SwiftMindConfigProtocol) async throws -> String
+    func generateTestsForEntireFile(_ code: String,
+                                    customPrompt: String?,
+                                    additionalContext: String?,
+                                    cfg: SwiftMindConfigProtocol) async throws -> String
+    func explainCode(_ code: String,
+                     cfg: SwiftMindConfigProtocol) async throws -> String
+    func refactorCode(_ code: String,
+                      cfg: SwiftMindConfigProtocol) async throws -> String
+    func summarizeCode(_ code: String,
+                       cfg: SwiftMindConfigProtocol) async throws -> String
+    func generateDocumentation(for code: String,
+                               style: DocumentationStyle,
+                               declarations: [String],
+                               returnFormat: DocumentationReturnFormat,
+                               cfg: SwiftMindConfigProtocol) async throws -> String
     func reviewCode(_ code: String, cfg: SwiftMindConfigProtocol) async throws -> String
+    func reviewComments(for code: String,
+                            declarations: [String],
+                            expectedCount: Int,
+                            cfg: SwiftMindConfigProtocol,
+                            returnFormat: ReviewReturnFormat) async throws -> [String]
+}
+
+public enum ReviewReturnFormat: String {
+    case blocks      // separator: \n\n
+    case jsonArray   // JSON: ["...", "..."]
 }
 
 // ToDo: Разделить на разные юзкейсы?
@@ -26,7 +49,7 @@ public final class AIUseCases: AIUseCasesProtocol {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
     
-    public init(ollama: OllamaBridgeProtocol = OllamaBridge(), config: SwiftMindConfigProtocol) {
+    public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
         self.ollama = ollama
         self.config = config
     }
@@ -215,4 +238,46 @@ public final class AIUseCases: AIUseCasesProtocol {
         """
         return try await ollama.send(prompt: prompt, model: cfg.defaultModel)
     }
+    
+    public func reviewComments(for code: String,
+                            declarations: [String],              // например: ["func","class","struct"]
+                            expectedCount: Int,                  // сколько блоков ждём
+                            cfg: SwiftMindConfigProtocol,
+                            returnFormat: ReviewReturnFormat = .blocks) async throws -> [String] {
+
+            // Сформируем список типов для промпта
+            let formattedTypes = declarations.map { "- \($0)" }.joined(separator: "\n")
+
+            // Просим РОВНО expectedCount блоков, по ПОРЯДКУ деклараций
+            let prompt = """
+            \(roleModelPromptInstruction)
+
+            Perform a professional Swift code review.
+
+            Review ONLY declarations of the following kinds (in the exact order they appear in the source code):
+            \(formattedTypes)
+
+            OUTPUT FORMAT (strict):
+            - Return review comments as plain text blocks (no markdown fences).
+            - Return EXACTLY \(expectedCount) blocks.
+            - Separate EACH block with exactly TWO newlines (\\n\\n).
+            - Each block should correspond to the next matching declaration in order.
+            - Do NOT include original code or any extra prose outside the blocks.
+
+            Focus on: correctness, safety, performance, API design, naming, Swift best practices.
+
+            Swift code:
+            \(code)
+            """
+
+            let text = try await ollama.send(prompt: prompt, model: cfg.defaultModel)
+
+            let blocks = text
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .components(separatedBy: "\n\n")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            return blocks
+        }
 }

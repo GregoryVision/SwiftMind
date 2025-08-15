@@ -28,22 +28,52 @@ struct Review: AsyncParsableCommand {
     func run() async throws {
         do {
             Self.logger.info("Starting code review for: \(filePath)")
-            
-            let (resolvedFileURL, code, sanitizedCode) = try prepareCode(from: filePath)
 
+            // 1) Подготовка кода
+            let (resolvedFileURL, _, sanitizedCode) = try prepareCode(from: filePath)
+            let cfg = SwiftMind.config
+
+            // 2) Сбор деклараций (для ожидания количества комментариев)
             let collector = try collectDeclarations(from: sanitizedCode)
-            let generatedComments = try await generateReview(for: sanitizedCode, cfg: SwiftMind.config)
+
+            // Можно использовать набор типов из конфига; при необходимости сузить —
+            // фильтровать collector.declarations по этим типам.
+            let reviewKinds = cfg.documentationDeclarations
+            let expectedCount = collector.declarations.count // TODO: при желании фильтровать по reviewKinds
+
+            // 3) Генерация комментариев блоками, строго по порядку
+            let generatedComments = try await SwiftMind.aiUseCases.reviewComments(
+                for: sanitizedCode,
+                declarations: reviewKinds,
+                expectedCount: expectedCount,
+                cfg: cfg,
+                returnFormat: .blocks
+            )
+
             try validateGeneratedComments(generatedComments)
 
-            if inline {
-                if generatedComments.count != collector.declarations.count {
-                    try await fallbackInlineReview(sanitizedCode, to: resolvedFileURL, cfg: SwiftMind.config)
-                    return
-                }
+            // 4) Fallback: если пользователь просит inline ИЛИ количество блоков не совпало
+            if inline || generatedComments.count != expectedCount {
+                Self.logger.warning("Inline mode or mismatch (expected \(expectedCount), got \(generatedComments.count)). Falling back to inline review.")
+                try await fallbackInlineReview(sanitizedCode, to: resolvedFileURL, cfg: cfg)
+                return
             }
 
-            let (processed, skipped) = try applyReviewInserter(to: sanitizedCode, comments: generatedComments, fileURL: resolvedFileURL)
-            logStatistics(collectorCount: collector.declarations.count, commentsCount: generatedComments.count, processed: processed, skipped: skipped)
+            // 5) Вставка комментариев над декларациями через rewriter
+            let (processed, skipped) = try applyReviewInserter(
+                to: sanitizedCode,
+                comments: generatedComments,
+                fileURL: resolvedFileURL
+            )
+
+            // 6) Логи статистики
+            logStatistics(
+                collectorCount: expectedCount,
+                commentsCount: generatedComments.count,
+                processed: processed,
+                skipped: skipped
+            )
+
         } catch {
             try handle(error)
         }
@@ -64,12 +94,6 @@ struct Review: AsyncParsableCommand {
         collector.walk(sourceFile)
         Self.logger.info("Found \(collector.declarations.count) declarations")
         return collector
-    }
-
-    private func generateReview(for code: String, cfg: SwiftMindConfigProtocol) async throws -> [String] {
-        let resultText = try await SwiftMind.aiUseCases.reviewComments(for: code, cfg: cfg)
-        let generatedComments = resultText.components(separatedBy: "\n\n").filter { !$0.isEmpty }
-        return generatedComments
     }
 
     private func fallbackInlineReview(_ code: String, to fileURL: URL, cfg: SwiftMindConfigProtocol) async throws {

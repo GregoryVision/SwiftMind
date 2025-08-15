@@ -17,6 +17,8 @@ public enum SwiftMindError: LocalizedError {
     case unsupportedFileType(String)
     case configurationError(String)
     case promptTooLong(Int, Int)
+    case modelMissing(String)
+    case timeout(Double)
     
     public var errorDescription: String? {
         switch self {
@@ -36,6 +38,36 @@ public enum SwiftMindError: LocalizedError {
             return "Configuration error: \(message)"
         case .promptTooLong(let promptCount, let maxLength):
             return "Prompt was truncated from \(promptCount) to \(maxLength) characters"
+        case .modelMissing(let model):
+            return "Model '\(model)' is not available in Ollama."
+        case .timeout(let seconds):
+            return "Request to Ollama timed out after \(seconds)s."
+            
+        }
+    }
+    public var failureReason: String? {
+        switch self {
+        case .modelMissing:
+            return "The requested model is not present locally."
+        case .timeout:
+            return "The model did not return a response within the configured timeout."
+        case .ollamaNotInstalled:
+            return "Ollama binary was not found in the current environment."
+        default:
+            return nil
+        }
+    }
+    
+    public var recoverySuggestion: String? {
+        switch self {
+        case .modelMissing(let model):
+            return "Run: `ollama pull \(model)` or choose another installed model."
+        case .timeout:
+            return "Increase the timeout, ensure the model is loaded, or try again later."
+        case .ollamaNotInstalled:
+            return "Install Ollama from https://ollama.com and ensure it is in your PATH."
+        default:
+            return nil
         }
     }
 }

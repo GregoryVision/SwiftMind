@@ -19,19 +19,25 @@ actor ProgressIndicator {
         isRunning = true
         
         Task {
-            print("🔄 \(message)", terminator: "")
-            fflush(stdout)
-            
-            while self.isRunning {
-                for char in ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] {
-                    if !self.isRunning { break }
-                    print("\r🔄 \(message) \(char)", terminator: "")
-                    fflush(stdout)
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 sec
-                }
-            }
-            print("\r", terminator: "")
+            await self.runLoop(message: message)
         }
+    }
+    
+    private func runLoop(message: String) async {
+        print("🔄 \(message)", terminator: "")
+        fflush(stdout)
+        
+        let frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+        while isRunning {
+            for ch in frames {
+                if !isRunning { break }
+                print("\r🔄 \(message) \(ch)", terminator: "")
+                fflush(stdout)
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+            }
+        }
+        print("\r", terminator: "")
+        fflush(stdout)
     }
     
     func stop() {

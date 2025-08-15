@@ -12,6 +12,7 @@ let package = Package(
     products: [
         .library(name: "Core", targets: ["Core"]),
         .executable(name: "swiftmind", targets: ["CLI"])
+//        .plugin(name: "SwiftMindPlugin", targets: ["SwiftMindPlugin"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.2.0"),
@@ -31,6 +32,16 @@ let package = Package(
 //                .product(name: "SwiftParser", package: "swift-syntax")
             ]
         ),
+//        .plugin(
+//            name: "SwiftMindPlugin",
+//            capability: .command(
+//                intent: .custom(verb: "swiftmind", description: "Run swiftmind commands"),
+//                permissions: [.writeToPackageDirectory(reason: "Generate/modify files")]
+//            ),
+//            dependencies: [
+//                .target(name: "CLI")
+//            ]
+//        ),
         .target(name: "XcodeExtension",
                 dependencies: ["Core"])
     ]
