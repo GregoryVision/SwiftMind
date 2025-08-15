@@ -13,7 +13,7 @@ import SwiftParser
 // ToDo: Вынести всю логику в Core
 
 @main
-struct SwiftMind: ParsableCommand {
+struct SwiftMindCLI: ParsableCommand {
     
     static let configuration = CommandConfiguration(
         abstract: "AI CLI for Swift developers",
@@ -22,7 +22,18 @@ struct SwiftMind: ParsableCommand {
     )
     static let config: SwiftMindConfigProtocol = SwiftMindConfig.load()
     nonisolated(unsafe) static let ollamaBridge: OllamaBridgeProtocol = OllamaBridge(maxRetries: config.maxRetries, timeoutSeconds: config.timeoutSeconds)
-    nonisolated(unsafe) static let aiUseCases: AIUseCasesProtocol = AIUseCases(ollama: ollamaBridge, config: config)
+    nonisolated(unsafe) static let aiUseCases: AIUseCasesProtocol = makeUseCases()
+    
+    static func makeUseCases() -> AIUseCasesProtocol {
+        let config = SwiftMindConfig.load()
+        let ollama = OllamaBridge(maxRetries: config.maxRetries, timeoutSeconds: config.timeoutSeconds)
+        return AIUseCases(
+            generateTests: GenerateTestsUseCaseImpl(ollama: ollama, config: config),
+            reviewCode: ReviewCodeUseCaseImpl(ollama: ollama, config: config),
+            explainCode: ExplainCodeUseCaseImpl(ollama: ollama, config: config),
+            generateDocs: GenerateDocumentationUseCaseImpl(ollama: ollama, config: config)
+        )
+    }
 }
 
 
