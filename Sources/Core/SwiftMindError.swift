@@ -6,6 +6,8 @@
 //
 
 import Foundation
+import os.log
+import ArgumentParser
 
 // MARK: - Errors
 public enum SwiftMindError: LocalizedError {
@@ -68,6 +70,19 @@ public enum SwiftMindError: LocalizedError {
             return "Install Ollama from https://ollama.com and ensure it is in your PATH."
         default:
             return nil
+        }
+    }
+    public static func handle(_ error: Error, logger: Logger?) throws {
+        switch error {
+        case let error as SwiftMindError:
+            logger?.error("❌ Error: \(error.localizedDescription)")
+            throw ExitCode.failure
+        case let error as ValidationError:
+            logger?.error("❌ Validation failed: \(error.description)")
+            throw ExitCode.failure
+        default:
+            logger?.error("❌ Unexpected error: \(error.localizedDescription)")
+            throw ExitCode.failure
         }
     }
 }

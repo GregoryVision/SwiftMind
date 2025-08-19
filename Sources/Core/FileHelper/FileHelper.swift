@@ -6,6 +6,7 @@
 //
 import Foundation
 import os.log
+import ArgumentParser
 
 public struct FileHelper {
     
@@ -77,7 +78,7 @@ public struct FileHelper {
     public static func resolve(filePath: String) -> URL {
         let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let resolvedFileURL = URL(fileURLWithPath: filePath, relativeTo: baseURL).standardized
-        return resolvedFileURL
+        return resolvedFileURL.absoluteURL
     }
     
     private static func sanitizePath(_ path: String) -> String {
@@ -92,5 +93,46 @@ public struct FileHelper {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         return cleaned
+    }
+    
+    public static func validateFile(at url: URL) throws {
+        let path = url.path
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw ValidationError("File not found: \(path)")
+        }
+
+        guard supportedExtensions.contains(url.pathExtension) else {
+            throw ValidationError("Only Swift files (.swift) are supported")
+        }
+
+        guard FileManager.default.isReadableFile(atPath: path) else {
+            throw ValidationError("File is not readable: \(path)")
+        }
+    }
+    
+    /// Читает дополнительные файлы-контексты.
+    /// - Parameters:
+    ///   - paths:     Список путей (можно относительных и абсолютных)
+    ///   - base:      Базовая директория, от которой «расправляем» относительные пути.
+    /// - Returns:     Конкатенированное содержимое файлов (или пустая строка)
+    public static func loadAdditionalContext(from paths: [String], base: URL) async throws -> String? {
+        guard !paths.isEmpty else { return nil }
+        var result = ""
+        
+        for raw in paths {
+            // 1. Строим абсолютный URL независимо от формата ввода
+            let fileURL = URL(fileURLWithPath: raw, relativeTo: base).standardized
+            
+            // 2. Проверяем существование
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                print("⚠️ Context file not found: \(fileURL.path)")
+                continue
+            }
+            
+            // 3. Читаем и добавляем
+            let fileContent = try String(contentsOf: fileURL)
+            result += "\n\n" + fileContent
+        }
+        return result
     }
 }

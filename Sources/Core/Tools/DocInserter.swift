@@ -7,6 +7,12 @@
 
 import Foundation
 import SwiftSyntax
+import SwiftParser
+
+public enum CommentInsertionKind {
+    case documentation  // "///"
+    case review         // "// REVIEW:"
+}
 
 public final class DocInserter: SyntaxRewriter {
     private let docs: [String]
@@ -14,15 +20,17 @@ public final class DocInserter: SyntaxRewriter {
     private var declarationIndex = 0
     private var processedCount = 0
     private var skippedCount = 0
+    private let commentKind: CommentInsertionKind
     private let commentPrefix: String
     
     public var totalProcessed: Int { processedCount }
     public var totalSkipped: Int { skippedCount }
     
-    init(docs: [String], skipExisting: Bool, commentPrefix: String = "///") {
+    init(docs: [String], skipExisting: Bool, kind: CommentInsertionKind) {
         self.docs = docs
         self.skipExisting = skipExisting
-        self.commentPrefix = commentPrefix
+        self.commentKind = kind
+        self.commentPrefix = kind == .review ? "// REVIEW:" : "///"
     }
     
     // MARK: - Function Declarations
@@ -74,18 +82,35 @@ public final class DocInserter: SyntaxRewriter {
         }
     }
     
+    public static func applyDocInserter(to code: String, docs: [String], skipExisting: Bool, fileURL: URL,  kind: CommentInsertionKind) throws -> (Int, Int) {
+        let sourceFile = Parser.parse(source: code)
+        let rewriter = DocInserter(docs: docs, skipExisting: skipExisting, kind: kind)
+        let newTree = rewriter.visit(sourceFile)
+        try "\(newTree)".write(to: fileURL, atomically: true, encoding: .utf8)
+        return (rewriter.totalProcessed, rewriter.totalSkipped)
+    }
+    
     // MARK: - Helper Methods
     private func processDeclaration(
         _ node: DeclSyntax,
         continueVisiting: (DeclSyntax) -> DeclSyntax
     ) -> DeclSyntax {
-        // Проверяем, нужно ли пропустить уже задокументированные
-        if skipExisting && hasExistingDocumentation(node) {
-            skippedCount += 1
-            return continueVisiting(node)
+    
+        if skipExisting {
+            switch commentKind {
+            case .documentation:
+                if hasExistingDocumentation(node) {
+                    skippedCount += 1
+                    return continueVisiting(node)
+                }
+            case .review:
+                if hasExistingReviewComment(node) {
+                    skippedCount += 1
+                    return continueVisiting(node)
+                }
+            }
         }
         
-        // Проверяем, есть ли еще документация
         guard declarationIndex < docs.count else {
             print("⚠️ Warning: More declarations than documentation blocks (at index \(declarationIndex))")
             return continueVisiting(node)
@@ -94,6 +119,12 @@ public final class DocInserter: SyntaxRewriter {
         // Добавляем комментарии (документацию или REVIEW)
         let docText = docs[declarationIndex]
         declarationIndex += 1
+        
+        if docText == "__NO_COMMENT__" {
+            skippedCount += 1
+            return continueVisiting(node)
+        }
+        
         processedCount += 1
         
         let documentedNode = addComments(to: node, commentText: docText, commentPrefix: commentPrefix)
@@ -119,6 +150,16 @@ public final class DocInserter: SyntaxRewriter {
             switch trivia {
             case .docLineComment, .docBlockComment:
                 return true
+            default:
+                return false
+            }
+        }
+    }
+    private func hasExistingReviewComment(_ node: DeclSyntax) -> Bool {
+        return node.leadingTrivia.contains { trivia in
+            switch trivia {
+            case .lineComment(let text):
+                return text.contains("REVIEW:")
             default:
                 return false
             }

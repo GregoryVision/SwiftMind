@@ -9,15 +9,23 @@ import Foundation
 import os.log
 
 public protocol GenerateDocumentationUseCase {
-    func generate(for code: String,
-                  style: DocumentationStyle,
-                  declarations: [String],
-                  returnFormat: DocumentationReturnFormat) async throws -> String
+    func generateBlocks(for code: String,
+                        style: DocumentationStyle,
+                        declarations: [String]) async throws -> [String]
+
+    func generateFullCode(for code: String,
+                          style: DocumentationStyle,
+                          declarations: [String]) async throws -> String
 }
 
 public struct GenerateDocumentationUseCaseImpl: GenerateDocumentationUseCase {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
+
+    public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
+        self.ollama = ollama
+        self.config = config
+    }
 
     private var roleModelPromptInstruction: String {
         """
@@ -26,15 +34,32 @@ public struct GenerateDocumentationUseCaseImpl: GenerateDocumentationUseCase {
         """
     }
 
-    public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
-        self.ollama = ollama
-        self.config = config
+    public func generateBlocks(for code: String,
+                                style: DocumentationStyle,
+                                declarations: [String]) async throws -> [String] {
+        let result = try await generateInternal(for: code,
+                                                style: style,
+                                                declarations: declarations,
+                                                returnFormat: .separateBlocks)
+        return result
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
-    public func generate(for code: String,
-                         style: DocumentationStyle,
-                         declarations: [String],
-                         returnFormat: DocumentationReturnFormat) async throws -> String {
+    public func generateFullCode(for code: String,
+                                 style: DocumentationStyle,
+                                 declarations: [String]) async throws -> String {
+        return try await generateInternal(for: code,
+                                          style: style,
+                                          declarations: declarations,
+                                          returnFormat: .fullCode)
+    }
+
+    private func generateInternal(for code: String,
+                                  style: DocumentationStyle,
+                                  declarations: [String],
+                                  returnFormat: DocumentationReturnFormat) async throws -> String {
         let styleInstruction = switch style {
         case .brief:
             "Write concise, single-line documentation focusing on what the element does."

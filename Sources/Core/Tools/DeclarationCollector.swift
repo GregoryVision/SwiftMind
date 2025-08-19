@@ -7,10 +7,11 @@
 
 import Foundation
 import SwiftSyntax
+import SwiftParser
 import os.log
 
 public final class DeclarationCollector: SyntaxVisitor {
-    private(set) var declarations: [DeclSyntax] = []
+    public private(set) var declarations: [DeclSyntax] = []
     private let logger = Logger(subsystem: "SwiftMind", category: "Test")
     
     override public func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -39,6 +40,13 @@ public final class DeclarationCollector: SyntaxVisitor {
 
     override public func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         return handle(node: node)
+    }
+    
+    public static func collectDeclarations(from code: String) throws -> DeclarationCollector {
+        let sourceFile = Parser.parse(source: code)
+        let collector = DeclarationCollector(viewMode: .sourceAccurate)
+        collector.walk(sourceFile)
+        return collector
     }
     
     private func handle(node: any DeclSyntaxProtocol) -> SyntaxVisitorContinueKind {

@@ -73,6 +73,7 @@ public struct ReviewCodeUseCaseImpl: ReviewCodeUseCase {
         OUTPUT FORMAT (strict):
         - Return review comments as plain text blocks (no markdown fences).
         - Return EXACTLY \(expectedCount) blocks.
+        - For declarations that do not require a comment, return this exact string: __NO_COMMENT__
         - Separate EACH block with exactly TWO newlines (\\n\\n).
         - Each block should correspond to the next matching declaration in order.
         - Do NOT include original code or any extra prose outside the blocks.
@@ -89,6 +90,5 @@ public struct ReviewCodeUseCaseImpl: ReviewCodeUseCase {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: "\n\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 }

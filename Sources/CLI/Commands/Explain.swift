@@ -8,35 +8,32 @@
 import Core
 import Foundation
 import ArgumentParser
+import os.log
 
 @available(macOS 13.0, *)
 struct Explain: AsyncParsableCommand {
+    
     static let configuration = CommandConfiguration(abstract: "Explain what Swift code does")
+    private static let logger = Logger(subsystem: "SwiftMind", category: "Review")
     
     @Argument(help: "The file to explain")
     var filePath: String
     
     func run() async throws {
-        let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        let resolvedFileURL = URL(fileURLWithPath: filePath, relativeTo: baseURL).standardized
+        Self.logger.info("Starting code explaining for: \(filePath)")
         
         do {
-            let code = try prepareCode(from: resolvedFileURL)
-            let explanation = try await generateExplanation(for: code, cfg: SwiftMind.config)
+            let (_, _, code) = try CodeProcessingService.prepareCode(from: filePath,
+                                                             promptMaxLength: SwiftMindCLI.config.promptMaxLength)
+            let explanation = try await generateExplanation(for: code, cfg: SwiftMindCLI.config)
             printExplanation(explanation)
-        } catch let error as SwiftMindError {
-            print("❌ Error: \(error.localizedDescription)")
-            throw ExitCode.failure
+        } catch {
+            try SwiftMindError.handle(error, logger: Self.logger)
         }
     }
     
-    private func prepareCode(from fileURL: URL) throws -> String {
-        let (_, code) = try FileHelper.readCode(atAbsolutePath: fileURL.path)
-        return code
-    }
-    
     private func generateExplanation(for code: String, cfg: SwiftMindConfigProtocol) async throws -> String {
-        return try await SwiftMind.aiUseCases.explainCode(code, cfg: cfg)
+        return try await SwiftMindCLI.aiUseCases.explainCode.explain(code: code)
     }
     
     private func printExplanation(_ explanation: String) {
