@@ -9,7 +9,8 @@ import Foundation
 import os.log
 
 public protocol ExplainCodeUseCase {
-    func explain(code: String) async throws -> String
+    func explainSingleFunction(functionSource: String,
+                               promptMaxLength: Int) async throws -> String
 }
 
 public struct ExplainCodeUseCaseImpl: ExplainCodeUseCase {
@@ -28,19 +29,24 @@ public struct ExplainCodeUseCaseImpl: ExplainCodeUseCase {
         self.config = config
     }
 
-    public func explain(code: String) async throws -> String {
+    public func explainSingleFunction(functionSource: String,
+                                      promptMaxLength: Int) async throws -> String {
         let prompt = """
         \(roleModelPromptInstruction)
 
-        Analyze and explain the following Swift code. Provide a detailed yet concise explanation covering:
-        1. The main purpose and functionality of the code.
-        2. Key functions, classes, or structs and what they do.
-        3. Important parameters or return values.
-        4. Any potential issues, best practices, or improvements.
+        Explain the SINGLE Swift function below.
 
-        Swift code:
-        \(code)
+        Output rules (strict):
+        - Plain text only (no code blocks, no markdown fences).
+        - Be concise but specific.
+        - Cover: purpose, inputs/outputs, side effects (I/O, file system), errors thrown, notable edge cases.
+        - Mention only what is visible in the function (no assumptions).
+
+        Function:
+        \(functionSource)
         """
-        return try await ollama.send(prompt: prompt, model: config.defaultModel)
+
+        let (sanitized, _) = try PromptSanitizer.sanitize(prompt, maxLength: promptMaxLength)
+        return try await ollama.send(prompt: sanitized, model: config.defaultModel)
     }
 }

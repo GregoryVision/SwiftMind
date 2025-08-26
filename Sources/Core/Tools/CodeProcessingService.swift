@@ -8,11 +8,32 @@
 import Foundation
 
 public struct CodeProcessingService {
-    public static func prepareCode(from path: String, promptMaxLength: Int) throws -> (URL, String, String)  {
+    
+    public struct CodeProcessingResult {
+        public let resolvedFileURL: URL
+        public let fileName: String
+        public let sanitizedCode: String
+    }
+    
+    public static func prepareCode(from path: String) throws -> CodeProcessingResult  {
         let resolvedFileURL = FileHelper.resolve(filePath: path)
         try FileHelper.validateFile(at: resolvedFileURL)
         let (fileName, code) = try FileHelper.readCode(atAbsolutePath: resolvedFileURL.path)
-        let satitizedCode = try PromptSanitizer.sanitize(code, maxLength: promptMaxLength)
-        return (resolvedFileURL, fileName, satitizedCode)
+        return CodeProcessingResult(resolvedFileURL: resolvedFileURL,
+                                    fileName: fileName,
+                                    sanitizedCode: code)
+    }
+    
+    public static func extractModuleName(from code: String) -> String? {
+        let lines = code.split(separator: "\n").prefix(5) // читаем первые 5 строк
+        for line in lines {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                let content = line.replacingOccurrences(of: "//", with: "").trimmingCharacters(in: .whitespaces)
+                if !content.isEmpty && !content.contains(".swift") && !content.lowercased().contains("created") {
+                    return content
+                }
+            }
+        }
+        return nil
     }
 }

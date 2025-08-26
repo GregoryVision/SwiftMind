@@ -10,7 +10,7 @@ import os.log
 import ArgumentParser
 
 // MARK: - Errors
-public enum SwiftMindError: LocalizedError {
+public enum SwiftMindError: LocalizedError, Equatable {
     case fileNotFound(String)
     case invalidFilePath(String)
     case ollamaNotInstalled

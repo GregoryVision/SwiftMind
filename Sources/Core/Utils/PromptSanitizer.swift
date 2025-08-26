@@ -8,10 +8,11 @@
 import Foundation
 
 public enum PromptSanitizer {
-    public static func sanitize(_ input: String, maxLength: Int) throws -> String {
+    public static func sanitize(_ input: String, maxLength: Int) throws -> (String, SwiftMindError?) {
+        let sanitizedPrompt = String(input.prefix(maxLength))
         guard input.count <= maxLength else {
-            throw SwiftMindError.promptTooLong(input.count, maxLength)
+            return (sanitizedPrompt, SwiftMindError.promptTooLong(input.count, maxLength))
         }
-        return String(input.prefix(maxLength))
+        return (sanitizedPrompt, nil)
     }
 }

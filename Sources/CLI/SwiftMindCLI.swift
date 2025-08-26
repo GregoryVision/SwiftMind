@@ -13,11 +13,11 @@ import SwiftParser
 // ToDo: Вынести всю логику в Core
 
 @main
-struct SwiftMindCLI: ParsableCommand {
+struct SwiftMindCLI: AsyncParsableCommand {
     
     static let configuration = CommandConfiguration(
         abstract: "AI CLI for Swift developers",
-        subcommands: [Test.self],
+        subcommands: [Test.self, Review.self, InsertDocs.self, Explain.self],
         defaultSubcommand: Test.self
     )
     static let config: SwiftMindConfigProtocol = SwiftMindConfig.load()

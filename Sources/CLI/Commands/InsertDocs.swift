@@ -7,10 +7,9 @@
 
 import Foundation
 import ArgumentParser
+import SwiftSyntax
 import os.log
 import Core
-import SwiftSyntax
-import SwiftParser
 
 @available(macOS 13.0, *)
 struct InsertDocs: AsyncParsableCommand {
@@ -21,59 +20,72 @@ struct InsertDocs: AsyncParsableCommand {
     @Argument(help: "The file to document")
     var filePath: String
     
+    @Argument(help: "Target function names to generate docs for")
+    var functions: [String] = []
+    
     @Option(name: .long, help: "Skip functions that already have documentation")
     var skipExisting: Bool = false
 
     @Option(name: .long, help: "Documentation style (brief/detailed)")
-    var style: DocumentationStyle = .brief
-    
-    @Option(help: "The output format for generated documentation.")
-    var returnFormat: DocumentationReturnFormat = .separateBlocks
+    var style: DocumentationStyle = .detailed
     
     func run() async throws {
+        guard !functions.isEmpty else {
+            throw ValidationError("Please specify at least one function to review.")
+        }
         do {
             Self.logger.info("Starting documentation insertion for: \(filePath)")
-            let (resolvedFileURL, _, sanitizedCode) = try CodeProcessingService.prepareCode(from: filePath,
-                                                                                            promptMaxLength: SwiftMindCLI.config.promptMaxLength)
-            let collector = try DeclarationCollector.collectDeclarations(from: sanitizedCode)
-            Self.logger.info("Found \(collector.declarations.count) declarations")
+            let codeRes = try CodeProcessingService.prepareCode(from: filePath)
             
-            let generatedDocs = try await generateDocs(for: sanitizedCode, style: style, cfg: SwiftMindCLI.config)
-            try validateGeneratedDocs(generatedDocs)
+            let commentsBySig = try await generateDocsMap(for: codeRes.sanitizedCode,
+                                                          style: style,
+                                                          targets: functions,
+                                                          cfg: SwiftMindCLI.config)
             
-            if generatedDocs.count != collector.declarations.count {
-                try await fallbackInsertDocs(sanitizedCode, to: resolvedFileURL, cfg: SwiftMindCLI.config)
-                return
-            }
+            let (processed, skipped) = try FunctionDocInserter.apply(
+                to: codeRes.sanitizedCode,
+                commentsBySignature: commentsBySig,
+                skipExisting: skipExisting,
+                kind: .documentation,
+                writeTo: codeRes.resolvedFileURL
+            )
             
-            let (processed, skipped) = try DocInserter.applyDocInserter(to: sanitizedCode,
-                                                                        docs: generatedDocs,
-                                                                        skipExisting: skipExisting,
-                                                                        fileURL: resolvedFileURL,
-                                                                        kind: .documentation)
-            Self.logger.logStatistics(collectorCount: collector.declarations.count,
-                                      docsCount: generatedDocs.count,
-                                      processed: processed,
-                                      skipped: skipped)
+            Self.logger.logStatistics(docsCount: commentsBySig.count, processed: processed, skipped: skipped)
         } catch {
             try SwiftMindError.handle(error, logger: Self.logger)
         }
     }
     
-    private func generateDocs(for code: String, style: DocumentationStyle, cfg: SwiftMindConfigProtocol) async throws -> [String] {
-        let generatedDocs = try await SwiftMindCLI.aiUseCases.generateDocs.generateBlocks(for: code,
-                                                                                 style: style,
-                                                                                 declarations: cfg.documentationDeclarations)
-        return generatedDocs
-    }
-    
-    private func fallbackInsertDocs(_ code: String, to fileURL: URL, cfg: SwiftMindConfigProtocol) async throws {
-        Self.logger.warning("Mismatch between declarations and documentation blocks. Falling back to full code insertion.")
-        let fullDocCode = try await SwiftMindCLI.aiUseCases.generateDocs.generateFullCode(for: code,
-                                                                                  style: style,
-                                                                                  declarations: cfg.documentationDeclarations)
-        try fullDocCode.write(to: fileURL, atomically: true, encoding: .utf8)
-        Self.logger.info("✍️ Full documentation inserted by AI into \(fileURL.path)")
+    private func generateDocsMap(for code: String,
+                                 style: DocumentationStyle,
+                                 targets: [String],
+                                 cfg: SwiftMindConfigProtocol) async throws -> [String: String] {
+        // Собрали все функции и подготовили мапу "сигнатура → текст"
+        let collector = FunctionCollector.collect(from: code, topLevelOnly: false)
+
+        var result: [String:String] = [:]
+
+        // Если targets пуст — берём все функции; иначе — только выбранные
+        let functionNodes: [FunctionDeclSyntax]
+        if targets.isEmpty {
+            functionNodes = collector.functions
+        } else {
+            functionNodes = targets.flatMap { collector.functionDecls(target: $0) }
+        }
+        
+        for fn in functionNodes {
+            let sig = fn.signatureString
+            let functionSource = String(fn.description)
+            let doc = try await SwiftMindCLI.aiUseCases.generateDocs.generateSingleFunctionDoc(
+                functionSource: functionSource,
+                style: style,
+                promptMaxLength: cfg.promptMaxLength
+            )
+
+            result[sig] = doc
+        }
+
+        return result
     }
     
     private func validateGeneratedDocs(_ docs: [String]) throws {

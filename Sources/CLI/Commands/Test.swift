@@ -18,38 +18,37 @@ struct Test: AsyncParsableCommand {
     @Argument(help: "The file to analyze")
     var filePath: String
     
-    @Option(name: .shortAndLong, help: "Target function names to generate tests for")
+    @Argument(help: "Target function names to generate tests for")
     var functions: [String] = []
     
-    @Option(name: .shortAndLong, help: "Custom user's prompt")
+    @Option(name: .shortAndLong,
+            help: "Custom user's prompt")
     var prompt: String?
     
-    @Option(name: .customLong("context"), help: "Optional paths to additional files for context")
-    var contextPaths: [String] = []
+//    @Option(name: .customLong("context"),
+//            parsing: .upToNextOption,
+//            help: "Optional paths to additional files for context")
+//    var contextPaths: [String] = []
     
-    @Option(name: .shortAndLong, help: "Path to output directory for generated tests")
+    @Option(name: .shortAndLong,
+            help: "Path to output directory for generated tests")
     var output: String?
 
     
     func run() async throws {
-        Self.logger.info("Starting test generation for: \(filePath)")
-        
-        let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-
         do {
-            let (resolvedFileURL, fileName, satitizedCode) = try CodeProcessingService.prepareCode(from: filePath,
-                                                                                                   promptMaxLength: SwiftMindCLI.config.promptMaxLength)
-            let additional = try await FileHelper.loadAdditionalContext(from: contextPaths,
-                                                                        base: baseURL)
+            Self.logger.info("Starting test generation for: \(filePath)")
+            let codeProcessingResult = try CodeProcessingService.prepareCode(from: filePath)
             let testsDir = try FileHelper.resolveTestsDirectory(
                 cliOverride: output,
                 cfg: SwiftMindCLI.config,
-                fileAbsolutePath: resolvedFileURL.path
+                fileAbsolutePath: codeProcessingResult.resolvedFileURL.path
             )
-            try await generateTests(for: satitizedCode,
-                                    fileName: fileName,
-                                    additional: additional,
-                                    testsDir: testsDir)
+            let moduleName = CodeProcessingService.extractModuleName(from: codeProcessingResult.sanitizedCode)
+            try await generateTests(for: codeProcessingResult.sanitizedCode,
+                                    fileName: codeProcessingResult.fileName,
+                                    testsDir: testsDir,
+                                    moduleName: moduleName)
         } catch {
             try SwiftMindError.handle(error, logger: Self.logger)
         }
@@ -57,35 +56,91 @@ struct Test: AsyncParsableCommand {
     
     private func generateTests(for code: String,
                                fileName: String,
-                               additional: String?,
-                               testsDir: URL) async throws {
+                               testsDir: URL,
+                               moduleName: String?) async throws {
+        let collector = FunctionCollector.collect(from: code, topLevelOnly: false)
+        Self.logger.info("Found \(collector.functions.count) functions")
         if functions.isEmpty {
-            Self.logger.info("Generating tests for entire file")
-            let txt = try await SwiftMindCLI.aiUseCases.generateTests.forEntireFile(code: code,
-                                                                      customPrompt: prompt,
-                                                                      additionalContext: additional)
-            try saveTestFile(named: "\(fileName)Tests.swift",
-                             content: txt,
-                             to: testsDir,
-                             description: "Full file tests")
-        } else {
-            for fn in functions {
-                Self.logger.info("Generating tests for function: \(fn)")
-                let txt = try await SwiftMindCLI.aiUseCases.generateTests.forFunction(code: code,
-                                                             functionName: fn,
-                                                             customPrompt: prompt,
-                                                             additionalContext: additional)
-                try saveTestFile(named: "\(fileName)_\(fn)Tests.swift",
-                                 content: txt,
+            for fn in collector.functions {
+                let fnSign = fn.signatureString
+                Self.logger.info("Generating tests for function: \(fnSign)")
+                let ollamaGeneratedTestCode = try await SwiftMindCLI.aiUseCases.generateTests.forFunction(code: code,
+                                                                                                          funcName: fn.name.text,
+                                                                                                          funcSign: fnSign,
+                                                                                                          promptMaxLength: SwiftMindCLI.config.promptMaxLength,
+                                                                                                          customPrompt: prompt)
+                try saveTestFile(named: "\(fileName)_\(fn.name.text)Tests.swift",
+                                 content: ollamaGeneratedTestCode.cleanGeneratedCode(),
                                  to: testsDir,
                                  description: "Tests for '\(fn)'")
+            }
+        } else {
+            for fn in functions {
+                Self.logger.info("Found \(collector.functions.count) functions")
+                let funcSignatures = collector.functionSignatures(named: fn)
+                for funcSignature in funcSignatures {
+                    Self.logger.info("Generating tests for function: \(fn)")
+                    let ollamaGeneratedTestCode = try await SwiftMindCLI.aiUseCases.generateTests.forFunction(code: code,
+                                                                                                              funcName: fn,
+                                                                                                              funcSign: funcSignature,
+                                                                                                              promptMaxLength: SwiftMindCLI.config.promptMaxLength,
+                                                                                                              customPrompt: prompt)
+                    try saveTestFile(named: "\(fileName)_\(fn)Tests.swift",
+                                     content: ollamaGeneratedTestCode.cleanGeneratedCode(),
+                                     to: testsDir,
+                                     description: "Tests for '\(fn)'")
+                }
             }
         }
     }
     
+//    private func combineTestableImportWith(code: String, moduleName: String?) -> String {
+//        if let moduleName = moduleName {
+//            let moduleImport = "@testable import \(moduleName)"
+//            return "\(moduleImport)\n\n\(code)"
+//        } else {
+//            return code
+//        }
+//    }
+    
+//    private func cleanLLMTestOutput(_ raw: String) -> String {
+//        var result = raw
+//
+//        // Удалить markdown-разметку
+//        result = result.replacingOccurrences(of: "```swift", with: "")
+//        result = result.replacingOccurrences(of: "```", with: "")
+//
+//        // Удалить начало с "Here's..." или подобным заголовком
+//        if let range = result.range(of: #"(?i)^.*unit test.*\n"#, options: .regularExpression) {
+//            result.removeSubrange(range)
+//        }
+//
+//        // Удалить конец с "Note that ..." или другим комментарием
+//        if let noteRange = result.range(of: #"(?i)\nNote that.*"#, options: .regularExpression) {
+//            result.removeSubrange(noteRange.lowerBound..<result.endIndex)
+//        }
+//
+//        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+//    }
+    
+//    func cleanGeneratedCode(_ raw: String) -> String {
+//        return raw
+//            .replacingOccurrences(of: "```swift", with: "")
+//            .replacingOccurrences(of: "```", with: "")
+//            .trimmingCharacters(in: .whitespacesAndNewlines)
+//    }
     
     private func saveTestFile(named fileName: String, content: String, to directory: URL, description: String) throws {
         let fileURL = try FileHelper.save(text: content, to: directory, fileName: fileName)
         Self.logger.info("✅ \(description) written to \(fileURL.path)")
+    }
+}
+
+extension String {
+    func cleanGeneratedCode() -> String {
+        self
+            .replacingOccurrences(of: "```swift", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

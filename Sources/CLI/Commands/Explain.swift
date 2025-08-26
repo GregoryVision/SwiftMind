@@ -12,32 +12,49 @@ import os.log
 
 @available(macOS 13.0, *)
 struct Explain: AsyncParsableCommand {
-    
-    static let configuration = CommandConfiguration(abstract: "Explain what Swift code does")
-    private static let logger = Logger(subsystem: "SwiftMind", category: "Review")
-    
-    @Argument(help: "The file to explain")
+    static let configuration = CommandConfiguration(
+        abstract: "Explain a SINGLE Swift function from a file"
+    )
+
+    private static let logger = Logger(subsystem: "SwiftMind", category: "Explain")
+
+    @Argument(help: "Path to the Swift file")
     var filePath: String
-    
+
+    @Argument(help: "Target function (name or full signature)")
+    var function: String
+
     func run() async throws {
-        Self.logger.info("Starting code explaining for: \(filePath)")
-        
+        Self.logger.info("Starting single-function explanation for: \(filePath) target: \(function, privacy: .public)")
+
         do {
-            let (_, _, code) = try CodeProcessingService.prepareCode(from: filePath,
-                                                             promptMaxLength: SwiftMindCLI.config.promptMaxLength)
-            let explanation = try await generateExplanation(for: code, cfg: SwiftMindCLI.config)
-            printExplanation(explanation)
+            let codeRes = try CodeProcessingService.prepareCode(from: filePath)
+
+            let collector = FunctionCollector.collect(from: codeRes.sanitizedCode, topLevelOnly: false)
+            let matches = collector.functionDecls(target: function)
+
+            guard !matches.isEmpty else {
+                throw ValidationError("No function found for target '\(function)'. Try exact name or full signature.")
+            }
+            if matches.count > 1 {
+                let options = matches.map { " - \($0.signatureString)" }.joined(separator: "\n")
+                throw ValidationError("Ambiguous target '\(function)'. Found multiple overloads:\n\(options)\nProvide full signature to disambiguate.")
+            }
+
+            let fn = matches[0]
+            let functionSource = String(fn.description)
+            let signature = fn.signatureString
+
+            let explanation = try await SwiftMindCLI.aiUseCases.explainCode.explainSingleFunction(
+                functionSource: functionSource,
+                promptMaxLength: SwiftMindCLI.config.promptMaxLength
+            )
+
+            print("📝 Explanation for: \(signature)\n")
+            print(explanation)
+
         } catch {
             try SwiftMindError.handle(error, logger: Self.logger)
         }
-    }
-    
-    private func generateExplanation(for code: String, cfg: SwiftMindConfigProtocol) async throws -> String {
-        return try await SwiftMindCLI.aiUseCases.explainCode.explain(code: code)
-    }
-    
-    private func printExplanation(_ explanation: String) {
-        print("📝 Code Explanation:")
-        print(explanation)
     }
 }

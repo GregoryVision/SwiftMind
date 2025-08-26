@@ -15,9 +15,8 @@ public extension Logger {
         self.info("  • Processed: \(processed)")
         self.info("  • Skipped: \(skipped)")
     }
-    func logStatistics(collectorCount: Int, docsCount: Int, processed: Int, skipped: Int) {
+    func logStatistics(docsCount: Int, processed: Int, skipped: Int) {
         self.info("📊 Statistics:")
-        self.info("  • Total declarations found: \(collectorCount)")
         self.info("  • Documentation blocks generated: \(docsCount)")
         self.info("  • Processed: \(processed)")
         self.info("  • Skipped: \(skipped)")

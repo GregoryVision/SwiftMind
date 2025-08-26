@@ -31,14 +31,9 @@ public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
     
     public var promptMaxLength: Int {
         switch defaultModel.lowercased() {
-        case "codellama":
-            return 50_000 // Approx. 12.5k tokens
-        case "mistral":
-            return 32_000 // Approx. 8k tokens
-        case "llama3":
-            return 128_000 // Approx. 32k tokens
         default:
-            return 50_000 // Safe default
+//            return 550_000 // for deepseek-coder-v2:16b
+            return 120000// for qwen2.5-coder:14b and codestral:22b
         }
     }
     
@@ -49,18 +44,21 @@ public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
 
     public init(
         testsDirectory: String = "",
-        defaultModel: String = "codellama",
-        tokenLimit: Int = 16000,
+        defaultModel: String = "qwen2.5-coder:14b",
+        tokenLimit: Int = 32000,
         maxRetries: Int = 3,
-        timeoutSeconds: Double = 150.0,
+        timeoutSeconds: Double = 240.0,
         documentationDeclarations: [String] = ["func", "class", "struct", "init", "enum", "protocol"]
     ) {
         self.testsDirectory = testsDirectory
-        self.defaultModel = defaultModel
         self.tokenLimit = tokenLimit
         self.maxRetries = maxRetries
         self.timeoutSeconds = timeoutSeconds
         self.documentationDeclarations = documentationDeclarations
+//        let byteCount = ProcessInfo.processInfo.physicalMemory
+//        let ram = Int(byteCount) / 1_073_741_824
+//        self.defaultModel = ram >= 24 ? "codellama:13b-instruct" : "codellama:7b-instruct"
+        self.defaultModel = defaultModel
     }
 
     /// Loads config from a swiftmind.plist file at the given path.
@@ -110,5 +108,9 @@ public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
         guard timeoutSeconds > 0 else {
             throw SwiftMindError.configurationError("Timeout must be positive")
         }
+    }
+    private func systemRAMInGB() -> Int {
+        let byteCount = ProcessInfo.processInfo.physicalMemory
+        return Int(byteCount) / 1_073_741_824 // 1024^3
     }
 }

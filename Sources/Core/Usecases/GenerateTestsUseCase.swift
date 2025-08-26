@@ -10,11 +10,13 @@ import os.log
 
 public protocol GenerateTestsUseCase {
     func forFunction(code: String,
-                     functionName: String,
-                     customPrompt: String?,
-                     additionalContext: String?) async throws -> String
+                     funcName: String,
+                     funcSign: String,
+                     promptMaxLength: Int,
+                     customPrompt: String?) async throws -> String
 
     func forEntireFile(code: String,
+                       promptMaxLength: Int,
                        customPrompt: String?,
                        additionalContext: String?) async throws -> String
 }
@@ -23,12 +25,31 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
     private let logger = Logger(subsystem: "SwiftMind", category: "GenerateTests")
-
+    
     private var roleModelPromptInstruction: String {
         """
         You are a Senior iOS Developer who writes clean, maintainable Swift code.
-        Follow Apple's coding guidelines and best practices.
+        You must output only valid Swift XCTest code. Never explain or add comments.
         """
+    }
+    
+    private var commonTestGuidelines: String {
+    """
+    Write unit tests using XCTest.
+
+    STRICT OUTPUT:
+    - Output ONLY valid Swift test code. No Markdown, no prose.
+    - Test ONLY the specified function/type.
+
+    RULES:
+    - Do NOT invent new methods/types/initializers/error cases.
+    - Do NOT call functions with missing/extra params; respect existing signatures.
+    - Do NOT change access modifiers or code structure.
+    - Do NOT add @testable import.
+    - Prefer behavior-based tests; include edge cases and at least one negative case.
+    - Use XCTestExpectation or async/await for async code.
+    - Use XCTAssertThrowsError for throwing paths.
+    """
     }
 
     public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
@@ -37,31 +58,16 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
     }
 
     public func forFunction(code: String,
-                            functionName: String,
-                            customPrompt: String?,
-                            additionalContext: String?) async throws -> String {
-        logger.info("Generating tests for function: \(functionName)")
+                            funcName: String,
+                            funcSign: String,
+                            promptMaxLength: Int,
+                            customPrompt: String?) async throws -> String {
+        logger.info("Generating tests for function: \(funcName)")
 
-        let fileHeader = """
-        This file contains the following Swift function:
-
-        \(code)
+        let taskInstruction = """
+        Write unit tests for the function with signature: "\(funcSign)".
+        Start with: class \(funcName)Tests: XCTestCase {
         """
-
-        let testInstruction = """
-        Write unit tests for the function named "\(functionName)" using XCTest.  
-        Each test should be independent and cover typical use cases and edge cases.  
-        Use descriptive test method names that reflect behavior being tested.
-        If the function is asynchronous, use `XCTestExpectation` or `async/await`.
-        """
-
-        let addCtx = additionalContext.flatMap {
-            """
-            This is additional context:
-
-            \($0)
-            """
-        }
 
         let cusPrompt = customPrompt.flatMap {
             """
@@ -71,27 +77,45 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
             """
         }
 
-        let prompt = [fileHeader, roleModelPromptInstruction, testInstruction, addCtx, cusPrompt]
+        let prompt = [roleModelPromptInstruction,
+                      commonTestGuidelines,
+                      taskInstruction,
+                      "Source code:\n\n\(code)",
+                      cusPrompt]
             .compactMap { $0 }
             .joined(separator: "\n\n")
-
-        return try await ollama.send(prompt: prompt, model: config.defaultModel)
+        
+        let (sanitizedPrompt, _) = try PromptSanitizer.sanitize(prompt, maxLength: promptMaxLength)
+        
+        return try await ollama.send(prompt: sanitizedPrompt, model: config.defaultModel)
     }
 
     public func forEntireFile(code: String,
+                              promptMaxLength: Int,
                               customPrompt: String?,
                               additionalContext: String?) async throws -> String {
         logger.info("Generating tests for entire file")
 
-        let fileHeader = """
-        Generate a complete Swift unit test file for the following source code:
+        let taskInstruction = """
+        Generate a test class named <OriginalTypeName>Tests for the provided Source code.
 
-        \(code)
+        Rules:
+        - Identify the main class or struct in the source code.
+        - Generate XCTest test cases for its public functions and methods.
+        - Cover normal behavior, edge cases, and at least one failure case if applicable.
+
+        STRICT OUTPUT RULES:
+        - Output ONLY valid Swift XCTest code.
+        - Start immediately with: class <OriginalTypeName>Tests: XCTestCase {
+        - Do NOT include imports, comments, explanations, or markdown fences.
         """
 
         let addCtx = additionalContext.flatMap {
             """
-            This is additional context:
+            "ADDITIONAL CONTEXT (STRICT RULES):
+            - Use ONLY for understanding environment.
+            - NEVER generate tests for this section.
+            - Tests must be generated ONLY for the main provided source file."
 
             \($0)
             """
@@ -106,11 +130,17 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
             Use XCTest, avoid redundant tests, and ensure good naming conventions.
             """
         }
-
-        let prompt = [fileHeader, roleModelPromptInstruction, addCtx, cusPrompt]
+        
+        let prompt = [addCtx,
+                      "Source code:\n\n\(code)",
+                      cusPrompt,
+                      roleModelPromptInstruction,
+                      commonTestGuidelines,
+                      taskInstruction]
             .compactMap { $0 }
             .joined(separator: "\n\n")
-
-        return try await ollama.send(prompt: prompt, model: config.defaultModel)
+        
+        let (sanitizedPrompt, _) = try PromptSanitizer.sanitize(prompt, maxLength: promptMaxLength)
+        return try await ollama.send(prompt: sanitizedPrompt, model: config.defaultModel)
     }
 }
