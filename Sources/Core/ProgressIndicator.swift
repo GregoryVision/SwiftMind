@@ -12,35 +12,28 @@ import os.log
 @available(macOS 13.0, *)
 actor ProgressIndicator {
     private var isRunning = false
-    private let logger = Logger(subsystem: "SwiftMind", category: "Progress")
-    
-    func start(message: String) {
-        guard !isRunning else { return }
+
+    func start(_ message: String) {
+        guard !isRunning, isatty(fileno(stderr)) == 1 else { return }
         isRunning = true
-        
-        Task {
-            await self.runLoop(message: message)
-        }
+        Task { await loop(message: message) }
     }
-    
-    private func runLoop(message: String) async {
-        print("🔄 \(message)", terminator: "")
-        fflush(stdout)
-        
+
+    func stop() {
+        isRunning = false
+        fputs("\u{1B}[2K\r\n", stderr)
+        fflush(stderr)
+    }
+
+    private func loop(message: String) async {
         let frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
         while isRunning {
             for ch in frames {
                 if !isRunning { break }
-                print("\r🔄 \(message) \(ch)", terminator: "")
-                fflush(stdout)
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+                fputs("\u{1B}[2K\r🔄 \(message) \(ch)", stderr)
+                fflush(stderr)
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
-        print("\r", terminator: "")
-        fflush(stdout)
-    }
-    
-    func stop() {
-        isRunning = false
     }
 }

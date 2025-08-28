@@ -72,16 +72,16 @@ public enum SwiftMindError: LocalizedError, Equatable {
             return nil
         }
     }
-    public static func handle(_ error: Error, logger: Logger?) throws {
+    public static func handle(_ error: Error) throws {
         switch error {
         case let error as SwiftMindError:
-            logger?.error("❌ Error: \(error.localizedDescription)")
+            print("❌ Error: \(error.localizedDescription)")
             throw ExitCode.failure
         case let error as ValidationError:
-            logger?.error("❌ Validation failed: \(error.description)")
+            print("❌ Validation failed: \(error.description)")
             throw ExitCode.failure
         default:
-            logger?.error("❌ Unexpected error: \(error.localizedDescription)")
+            print("❌ Unexpected error: \(error.localizedDescription)")
             throw ExitCode.failure
         }
     }

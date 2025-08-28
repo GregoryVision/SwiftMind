@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>timeoutSeconds</key>
-	<real>150</real>
+	<integer>240</integer>
 	<key>maxRetries</key>
 	<integer>3</integer>
 	<key>testsDirectory</key>
 	<string></string>
 	<key>defaultModel</key>
-	<string>codellama</string>
+	<string>qwen2.5-coder:14b</string>
 	<key>tokenLimit</key>
-	<integer>16000</integer>
+	<integer>32000</integer>
 	<key>documentationDeclarations</key>
 	<array>
 		<string>func</string>

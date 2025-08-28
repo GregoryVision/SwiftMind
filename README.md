@@ -5,9 +5,14 @@
 //  Created by Gregory Tolkachev on 20.08.2025.
 //
 
-## 🚀 Установка
 
-### Вариант 1: через Makefile
+## Compatibility
+- Swift toolchain: 5.10 or newer (tested on 6.0.2)
+- SwiftSyntax: 510.x
+
+If you’re on Swift 5.9, use the `swift-5.9-compat` tag (SwiftSyntax 509.x).
+SwiftSyntax 600.x (Swift 6 APIs) is planned but not required yet.
+
 
 ## ⚙️ Requirements
 
@@ -22,29 +27,16 @@
    ```bash
    ollama run codellama:7b-instruct
 
+## 🚀 Установка
+
+### через Makefile
+
+
 ```bash
 git clone https://github.com/your-name/SwiftMind.git
 cd SwiftMind
 make install
 
-
-
-
-
-
-
-# 1. Клонируй репозиторий
-git clone https://github.com/your-username/SwiftMind.git
-cd SwiftMind
-
-# 2. Сделай скрипт исполняемым
-chmod +x install-swiftmind.sh
-
-# 3. Запусти установку (потребуется пароль)
-./install-swiftmind.sh
-
-# 4. Проверь установку
-swiftmind --help
 
 
 ### How It Works

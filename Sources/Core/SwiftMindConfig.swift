@@ -66,33 +66,107 @@ public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
         let data = try Data(contentsOf: fileURL)
         self = try PropertyListDecoder().decode(SwiftMindConfig.self, from: data)
     }
-
-    public static func load(startingFrom startDir: URL? = nil) -> SwiftMindConfig {
-        let start = startDir ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        if let url = findConfigPlist(startingFrom: start) {
-            Self.logger.info("Found config at: \(url.path)")
-            do {
-                return try SwiftMindConfig(fromFile: url)
-            } catch {
-                Self.logger.warning("Failed to load config: \(error.localizedDescription). Using defaults.")
+    
+    /// Ищет `swiftmind.plist` рекурсивно ВНИЗ от `startDir`.
+    /// Возвращает первый найденный (детерминированно — в порядке обхода файловой системы).
+    public static func findConfigPlistDownward(
+        startingFrom startDir: URL,
+        fileName: String = "swiftmind.plist",
+        ignoreDirs: Set<String> = [".git", ".build", "build", "DerivedData", "node_modules"],
+        maxDepth: Int? = nil,
+        followSymlinks: Bool = false
+    ) -> URL? {
+        
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .nameKey]
+        
+        guard let enumerator = FileManager.default.enumerator(
+            at: startDir,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles], // скрытые пропускаем
+            errorHandler: { url, err in
+                // Можно залогировать, но не падать
+                // print("Enumerator error at \(url.path): \(err)")
+                return true
             }
-        } else {
-            Self.logger.info("No config file found, using defaults")
+        ) else { return nil }
+        
+        let baseComponents = startDir.standardized.pathComponents.count
+        
+        for case let url as URL in enumerator {
+            // Глубина (относительно стартовой)
+            if let maxDepth = maxDepth {
+                let depth = url.standardized.pathComponents.count - baseComponents
+                if depth > maxDepth {
+                    enumerator.skipDescendants()
+                    continue
+                }
+            }
+            
+            // Узнаём тип, имя, симлинк
+            guard let rv = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+            let name = rv.name ?? url.lastPathComponent
+            
+            // Игнорируем нежелательные директории
+            if rv.isDirectory == true {
+                if ignoreDirs.contains(name) {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                if rv.isSymbolicLink == true && !followSymlinks {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                continue
+            }
+            
+            if name == fileName {
+                return url
+            }
         }
-        return SwiftMindConfig() // явный вызов базового init с дефолтами
+        return nil
     }
     
-    public static func findConfigPlist(startingFrom directory: URL) -> URL? {
-        var current = directory
+    /// Пытается сначала найти вниз, а если нет — поднимается вверх (как у тебя было).
+    public static func load(startingFrom startDir: URL? = nil) -> SwiftMindConfig {
+        let start = (startDir ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardized
         
-        while current.path != "/" {
-            let candidate = current.appendingPathComponent("swiftmind.plist")
-            if FileManager.default.fileExists(atPath: candidate.path) {
+        // 1) Сначала ищем вниз (если ты в корне проекта, это сработает)
+        if let url = findConfigPlistDownward(startingFrom: start) {
+            print("Found config (downward) at: \(url.path)")
+            do {
+                return try SwiftMindConfig(fromFile: url)
+            }
+            catch {
+                print("Failed to load config: \(error.localizedDescription). Using defaults.")
+            }
+        }
+        
+        // 2) Фоллбэк — как раньше: вверх по дереву
+        if let url = findConfigPlistUpward(startingFrom: start) {
+            print("Found config (upward) at: \(url.path)")
+            do {
+                return try SwiftMindConfig(fromFile: url)
+            }
+            catch {
+                print("Failed to load config: \(error.localizedDescription). Using defaults.")
+            }
+        }
+        
+        print("No config file found, using defaults")
+        return SwiftMindConfig()
+    }
+    
+    /// Твой прежний «поиск вверх».
+    public static func findConfigPlistUpward(startingFrom directory: URL, fileName: String = "swiftmind.plist") -> URL? {
+        var current = directory.standardized
+        let fm = FileManager.default
+        repeat {
+            let candidate = current.appendingPathComponent(fileName)
+            if fm.fileExists(atPath: candidate.path) {
                 return candidate
             }
             current.deleteLastPathComponent()
-        }
-        
+        } while current.path != "/"
         return nil
     }
     

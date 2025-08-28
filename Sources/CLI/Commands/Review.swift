@@ -36,16 +36,15 @@ struct Review: AsyncParsableCommand {
         }
 
         do {
-            Self.logger.info("Starting function review for: \(filePath)")
-
+            print("Starting function review for: \(filePath)")
+            
             let codeRes = try CodeProcessingService.prepareCode(from: filePath)
-            let code = codeRes.sanitizedCode
 
             let commentsBySig = try await generateReviewMap(for: codeRes.sanitizedCode,
                                                             targets: functions,
                                                             cfg: SwiftMindCLI.config)
 
-            let (processed, skipped) = try FunctionDocInserter.apply(
+            let (_, _) = try FunctionDocInserter.apply(
                 to: codeRes.sanitizedCode,
                 commentsBySignature: commentsBySig,
                 skipExisting: skipExisting,
@@ -53,9 +52,9 @@ struct Review: AsyncParsableCommand {
                 writeTo: codeRes.resolvedFileURL
             )
 
-            Self.logger.info("✅ Review comments inserted into \(codeRes.resolvedFileURL.path)")
+            print("✅ Review comments inserted into \(codeRes.resolvedFileURL.path)")
         } catch {
-            try SwiftMindError.handle(error, logger: Self.logger)
+            try SwiftMindError.handle(error)
         }
     }
     

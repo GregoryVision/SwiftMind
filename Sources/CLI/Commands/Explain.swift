@@ -25,7 +25,7 @@ struct Explain: AsyncParsableCommand {
     var function: String
 
     func run() async throws {
-        Self.logger.info("Starting single-function explanation for: \(filePath) target: \(function, privacy: .public)")
+        print("Starting single-function explanation for: \(filePath) target: \(function)")
 
         do {
             let codeRes = try CodeProcessingService.prepareCode(from: filePath)
@@ -54,7 +54,7 @@ struct Explain: AsyncParsableCommand {
             print(explanation)
 
         } catch {
-            try SwiftMindError.handle(error, logger: Self.logger)
+            try SwiftMindError.handle(error)
         }
     }
 }

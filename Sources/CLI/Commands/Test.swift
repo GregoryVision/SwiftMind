@@ -50,7 +50,7 @@ struct Test: AsyncParsableCommand {
                                     testsDir: testsDir,
                                     moduleName: moduleName)
         } catch {
-            try SwiftMindError.handle(error, logger: Self.logger)
+            try SwiftMindError.handle(error)
         }
     }
     
@@ -63,7 +63,7 @@ struct Test: AsyncParsableCommand {
         if functions.isEmpty {
             for fn in collector.functions {
                 let fnSign = fn.signatureString
-                Self.logger.info("Generating tests for function: \(fnSign)")
+                print("Generating tests for function: \(fnSign)")
                 let ollamaGeneratedTestCode = try await SwiftMindCLI.aiUseCases.generateTests.forFunction(code: code,
                                                                                                           funcName: fn.name.text,
                                                                                                           funcSign: fnSign,
@@ -79,7 +79,7 @@ struct Test: AsyncParsableCommand {
                 Self.logger.info("Found \(collector.functions.count) functions")
                 let funcSignatures = collector.functionSignatures(named: fn)
                 for funcSignature in funcSignatures {
-                    Self.logger.info("Generating tests for function: \(fn)")
+                    print("Generating tests for function: \(fn)")
                     let ollamaGeneratedTestCode = try await SwiftMindCLI.aiUseCases.generateTests.forFunction(code: code,
                                                                                                               funcName: fn,
                                                                                                               funcSign: funcSignature,
@@ -94,45 +94,9 @@ struct Test: AsyncParsableCommand {
         }
     }
     
-//    private func combineTestableImportWith(code: String, moduleName: String?) -> String {
-//        if let moduleName = moduleName {
-//            let moduleImport = "@testable import \(moduleName)"
-//            return "\(moduleImport)\n\n\(code)"
-//        } else {
-//            return code
-//        }
-//    }
-    
-//    private func cleanLLMTestOutput(_ raw: String) -> String {
-//        var result = raw
-//
-//        // Удалить markdown-разметку
-//        result = result.replacingOccurrences(of: "```swift", with: "")
-//        result = result.replacingOccurrences(of: "```", with: "")
-//
-//        // Удалить начало с "Here's..." или подобным заголовком
-//        if let range = result.range(of: #"(?i)^.*unit test.*\n"#, options: .regularExpression) {
-//            result.removeSubrange(range)
-//        }
-//
-//        // Удалить конец с "Note that ..." или другим комментарием
-//        if let noteRange = result.range(of: #"(?i)\nNote that.*"#, options: .regularExpression) {
-//            result.removeSubrange(noteRange.lowerBound..<result.endIndex)
-//        }
-//
-//        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-//    }
-    
-//    func cleanGeneratedCode(_ raw: String) -> String {
-//        return raw
-//            .replacingOccurrences(of: "```swift", with: "")
-//            .replacingOccurrences(of: "```", with: "")
-//            .trimmingCharacters(in: .whitespacesAndNewlines)
-//    }
-    
     private func saveTestFile(named fileName: String, content: String, to directory: URL, description: String) throws {
         let fileURL = try FileHelper.save(text: content, to: directory, fileName: fileName)
-        Self.logger.info("✅ \(description) written to \(fileURL.path)")
+        print("✅ \(description) written to \(fileURL.path)")
     }
 }
 

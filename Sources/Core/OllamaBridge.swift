@@ -39,7 +39,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
         logger.info("Sending prompt to Ollama (model: \(model, privacy: .public), length: \(prompt.count, privacy: .public))")
 
         let progress = ProgressIndicator()
-        await progress.start(message: "Generating response with AI...")
+        await progress.start("Generating response with AI...")
         defer { Task { await progress.stop() } }
 
         var lastError: Error?

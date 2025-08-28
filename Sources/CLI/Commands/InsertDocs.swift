@@ -34,7 +34,7 @@ struct InsertDocs: AsyncParsableCommand {
             throw ValidationError("Please specify at least one function to review.")
         }
         do {
-            Self.logger.info("Starting documentation insertion for: \(filePath)")
+            print("Starting documentation insertion for: \(filePath)")
             let codeRes = try CodeProcessingService.prepareCode(from: filePath)
             
             let commentsBySig = try await generateDocsMap(for: codeRes.sanitizedCode,
@@ -49,10 +49,10 @@ struct InsertDocs: AsyncParsableCommand {
                 kind: .documentation,
                 writeTo: codeRes.resolvedFileURL
             )
-            
+            print("Documentation inserted into: \(filePath)")
             Self.logger.logStatistics(docsCount: commentsBySig.count, processed: processed, skipped: skipped)
         } catch {
-            try SwiftMindError.handle(error, logger: Self.logger)
+            try SwiftMindError.handle(error)
         }
     }
     
