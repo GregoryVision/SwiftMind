@@ -1,0 +1,53 @@
+//
+//  .gitignore
+//  SwiftMind
+//
+//  Created by Gregory Tolkachev on 29.08.2025.
+//
+
+# =======================================
+# SwiftMind .gitignore
+# =======================================
+
+### Swift / SwiftPM ###
+.build/
+.swiftpm/
+Package.resolved
+
+### Xcode ###
+*.xcworkspace/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+xcuserdata/
+DerivedData/
+*.dSYM
+*.dSYM.zip
+
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+### Logs & temp ###
+*.log
+*.swp
+*~
+profile
+
+### SwiftMind Specific ###
+# Local user config (do not commit)
+swiftmind.plist
+
+# Generated test output
+GeneratedTests/
+
+# Context/temp files
+.context/
+.temp/
+
+### Ollama ###
+# Avoid committing local LLM models or downloads
+ollama_models/
+ollama_downloads/
