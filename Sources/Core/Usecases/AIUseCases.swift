@@ -8,19 +8,29 @@
 import Foundation
 import os.log
 
+/// Defines the set of AI-powered use cases available in SwiftMind.
 public protocol AIUseCasesProtocol {
+    /// Generates unit tests for Swift functions.
     var generateTests: GenerateTestsUseCase { get }
+    /// Reviews Swift code and produces inline feedback.
     var reviewCode: ReviewCodeUseCase { get }
+    /// Explains the behavior of a Swift function.
     var explainCode: ExplainCodeUseCase { get }
+    /// Generates documentation comments for Swift declarations.
     var generateDocs: GenerateDocumentationUseCase { get }
 }
 
-public final class AIUseCases: AIUseCasesProtocol {
+/// Concrete container of all AI use cases.
+///
+/// This acts as a single access point for the CLI and can be easily
+/// replaced with mocks in tests.
+public struct AIUseCases: AIUseCasesProtocol {
     public let generateTests: GenerateTestsUseCase
     public let reviewCode: ReviewCodeUseCase
     public let explainCode: ExplainCodeUseCase
     public let generateDocs: GenerateDocumentationUseCase
 
+    /// Initializes the container with specific implementations.
     public init(
         generateTests: GenerateTestsUseCase,
         reviewCode: ReviewCodeUseCase,

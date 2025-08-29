@@ -8,29 +8,40 @@
 import Foundation
 import os.log
 
+/// Use case: generates a plain-text explanation for a single Swift function.
 public protocol ExplainCodeUseCase {
-    func explainSingleFunction(functionSource: String,
-                               promptMaxLength: Int) async throws -> String
+    /// Produces an explanation of the given Swift function.
+    /// - Parameters:
+    ///   - functionSource: Raw Swift source of a single function declaration.
+    ///   - promptMaxLength: Maximum number of characters for the prompt after sanitization.
+    /// - Returns: Concise plain-text explanation (purpose, inputs/outputs, side effects, errors, edge cases).
+    func explainSingleFunction(
+        functionSource: String,
+        promptMaxLength: Int
+    ) async throws -> String
 }
 
+/// Default implementation of `ExplainCodeUseCase` backed by an `OllamaBridgeProtocol`.
 public struct ExplainCodeUseCaseImpl: ExplainCodeUseCase {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
 
-    private var roleModelPromptInstruction: String {
-        """
-        You are a Senior iOS Developer who writes clean, maintainable Swift code.
-        Follow Apple's coding guidelines and best practices.
-        """
-    }
+    /// Instruction prompt used as a role model for explanations.
+    private let roleModelPromptInstruction: String = """
+    You are a Senior iOS Developer who writes clean, maintainable Swift code.
+    Follow Apple's coding guidelines and best practices.
+    """
 
+    /// Creates an explanation use case.
     public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
         self.ollama = ollama
         self.config = config
     }
 
-    public func explainSingleFunction(functionSource: String,
-                                      promptMaxLength: Int) async throws -> String {
+    public func explainSingleFunction(
+        functionSource: String,
+        promptMaxLength: Int
+    ) async throws -> String {
         let prompt = """
         \(roleModelPromptInstruction)
 

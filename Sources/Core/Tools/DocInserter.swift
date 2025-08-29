@@ -35,49 +35,49 @@ public final class DocInserter: SyntaxRewriter {
     
     // MARK: - Function Declarations
     override public func visit(_ node: FunctionDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(FunctionDeclSyntax.self)!)
         }
     }
     
     // MARK: - Initializer Declarations
     override public func visit(_ node: InitializerDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(InitializerDeclSyntax.self)!)
         }
     }
     
     // MARK: - Class Declarations
     override public func visit(_ node: ClassDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(ClassDeclSyntax.self)!)
         }
     }
     
     // MARK: - Struct Declarations
     override public func visit(_ node: StructDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(StructDeclSyntax.self)!)
         }
     }
     
     // MARK: - Enum Declarations
     override public func visit(_ node: EnumDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(EnumDeclSyntax.self)!)
         }
     }
     
     // MARK: - Protocol Declarations
     override public func visit(_ node: ProtocolDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(ProtocolDeclSyntax.self)!)
         }
     }
     
     // MARK: - Extension Declarations
     override public func visit(_ node: ExtensionDeclSyntax) -> DeclSyntax {
-        return processDeclaration(node.as(DeclSyntax.self)!) { processedNode in
+        return processDeclaration(DeclSyntax(node)) { processedNode in
             super.visit(processedNode.as(ExtensionDeclSyntax.self)!)
         }
     }

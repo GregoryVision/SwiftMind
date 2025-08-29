@@ -10,17 +10,24 @@ import SwiftParser
 import os.log
 
 public final class FunctionCollector: SyntaxVisitor {
+    /// Discovered functions in the visited syntax tree.
     public private(set) var functions: [FunctionDeclSyntax] = []
+
+    /// When `true`, collects only top-level functions (outside types/extensions).
     private let topLevelOnly: Bool
+
+    /// Subsystem logger for diagnostics (reserved for future use).
     private let logger = Logger(subsystem: "SwiftMind", category: "FunctionCollector")
 
-    /// - Parameter topLevelOnly: если true — собирать только топ-левел функции (вне типов/экстеншенов)
+    /// Creates a function collector.
+    /// - Parameter topLevelOnly: If `true`, collect only top-level functions (outside types/extensions).
     public init(topLevelOnly: Bool = false,
                 viewMode: SyntaxTreeViewMode = .sourceAccurate) {
         self.topLevelOnly = topLevelOnly
         super.init(viewMode: viewMode)
     }
 
+    /// Visits function declarations and appends them to `functions` according to `topLevelOnly`.
     public override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         if !topLevelOnly || isTopLevel(node) {
             functions.append(node)
@@ -28,7 +35,11 @@ public final class FunctionCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    /// Собрать функции из сырого исходника
+    /// Collects functions from a raw Swift source string.
+    /// - Parameters:
+    ///   - source: Swift source text.
+    ///   - topLevelOnly: If `true`, collect only top-level functions.
+    /// - Returns: A configured `FunctionCollector` with populated `functions`.
     public static func collect(from source: String,
                                topLevelOnly: Bool = false) -> FunctionCollector {
         let file = Parser.parse(source: source)
@@ -39,14 +50,14 @@ public final class FunctionCollector: SyntaxVisitor {
 
     // MARK: - Helpers
 
-    /// Является ли функция топ-левел (не внутри типа/extension)
+    /// Checks whether a node represents a top-level function (not inside a type/extension).
     private func isTopLevel(_ node: SyntaxProtocol) -> Bool {
-        // Для топ-левел функций родительская цепочка: FunctionDeclSyntax
-        // -> CodeBlockItemSyntax -> SourceFileSyntax
+        // For top-level functions the parent chain is:
+        // FunctionDeclSyntax -> CodeBlockItemSyntax -> SourceFileSyntax
         var p = node.parent
         while let parent = p {
             if parent.is(SourceFileSyntax.self) { return true }
-            // Если встретили декларацию типа — значит функция вложенная
+            // If we meet any declaration node (and it's not the source file), it's nested.
             if parent.is(DeclSyntax.self) && !parent.is(SourceFileSyntax.self) {
                 return false
             }
@@ -56,114 +67,87 @@ public final class FunctionCollector: SyntaxVisitor {
     }
 }
 
-// MARK: - Удобные представления
+// MARK: - Convenience representations
 
 public extension FunctionDeclSyntax {
-    /// Декларация без тела (все модификаторы/атрибуты сохраняются)
+    /// Declaration without the body (attributes/modifiers preserved).
     var declarationString: String {
         self.with(\.body, nil).trimmedDescription
     }
 
-    /// Полный текст функции (включая тело)
+    /// Full textual representation of the function (including the body).
     var fullText: String {
         self.trimmedDescription
     }
 }
 
 extension FunctionCollector {
-    /// Возвращает точную сигнатуру функции по имени (без тела).
-    /// Если несколько перегрузок – вернёт все.
+    /// Returns precise function signatures (headers) for a given name (all overloads).
     public func functionSignatures(named name: String) -> [String] {
         functions.compactMap { fnDecl in
             guard fnDecl.name.text == name else { return nil }
-            
-            // Берём весь заголовок (attributes + modifiers + func keyword + identifier + signature)
+
+            // Take full header (attributes + modifiers + func keyword + identifier + signature)
             let header = fnDecl.trimmedDescription
-            
-            // Обрезаем тело (если есть)
+
+            // Strip body if present
             if let body = fnDecl.body {
-                let bodyRange = body.trimmedDescription
-                if let range = header.range(of: bodyRange) {
+                let bodyText = body.trimmedDescription
+                if let range = header.range(of: bodyText) {
                     return String(header[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
             return header
         }
     }
-    
-    /// Возвращает первую сигнатуру функции по имени
+
+    /// Returns the first signature for a given function name (if any).
     public func firstFunctionSignature(named name: String) -> String? {
         return functionSignatures(named: name).first
     }
 }
 
 extension FunctionCollector {
-    /// Универсальный поиск: принимает либо имя, либо полную сигнатуру/заголовок.
-    /// - Если это имя — вернёт все перегрузки по имени.
-    /// - Если это сигнатура — вернёт точные совпадения по канонической сигнатуре.
-    /// - Если это «заголовок» без `func` или с обрезкой — попробует prefix-match по канонизированной сигнатуре.
+    /// Universal lookup that accepts either a simple name or a full signature/header.
+    /// - If it's a name — returns all overloads by that name.
+    /// - If it's a signature — returns exact matches by canonical signature.
+    /// - If it's a shortened header (no `func` or truncated) — tries prefix-match on the canonical signature.
     public func functionDecls(target: String) -> [FunctionDeclSyntax] {
         let t = target.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return [] }
-        
-        // 1) Похоже на сигнатуру? (есть скобки параметров/генерики/throws/-> или начинается с func)
+
+        // 1) Looks like a signature? (has parameter parens/generics/throws/-> or starts with `func`)
         if t.isProbablySignatureLike {
-            // Точное совпадение канонической сигнатуры
+            // Exact match by canonicalized signature
             let key = t.canonicalizedSignatureKey()
             let exact = functions.filter { $0.canonicalSignatureKey() == key }
             if !exact.isEmpty { return exact }
-            
-            // Пробуем prefix-match (пользователь мог передать укороченный заголовок)
+
+            // Fallback: prefix-match (user may provide a shortened header)
             return functions.filter { $0.canonicalSignatureKey().hasPrefix(key) }
         }
-        
-        // 2) Иначе считаем, что это имя
+
+        // 2) Otherwise treat it as a plain name
         return functions.filter { $0.name.text == t }
     }
-    /// Все функции с данным именем (все перегрузки)
+
+    /// All functions with the given name (all overloads).
     public func functionDecls(named name: String) -> [FunctionDeclSyntax] {
         functions.filter { $0.name.text == name }
     }
 
-    /// Поиск по канонической сигнатуре (если пользователь передал полную сигнатуру)
+    /// Lookup by canonical signature (when the user provided a full signature).
     public func functionDecls(matching target: String) -> [FunctionDeclSyntax] {
         let normalizedTarget = target.canonicalizedSignatureKey()
         return functions.filter { $0.canonicalSignatureKey() == normalizedTarget }
     }
 }
 
-extension FunctionDeclSyntax {
-    /// Канонический ключ сигнатуры: func <name>(label:Type,...) [async] [throws] -> ReturnType
-    /// без атрибутов, без значений по умолчанию, с нормализованными пробелами
-    public func canonicalSignatureKey() -> String {
-        var parts: [String] = []
-
-        parts.append("func")
-        parts.append(name.text)
-
-        // Параметры
-        let items = signature.parameterClause.parameters.map { p -> String in
-            let label = p.firstName.text
-            let type = p.type.trimmedDescription.replacingOccurrences(of: " ", with: "")
-            return "\(label):\(type)"
-        }
-        parts.append("(\(items.joined(separator: ",")))")
-
-        // async / throws
-        if signature.effectSpecifiers?.asyncSpecifier != nil { parts.append("async") }
-        if signature.effectSpecifiers?.throwsSpecifier != nil { parts.append("throws") }
-
-        // return type
-        if let ret = signature.returnClause?.type.trimmedDescription {
-            parts.append("->\(ret.replacingOccurrences(of: " ", with: ""))")
-        }
-
-        return parts.joined(separator: " ")
-    }
-}
-
 private extension String {
-    /// Нормализация пользовательского ввода под тот же формат ключа
+    /// Normalizes user input to the same canonical format used for signature keys.
+    ///
+    /// Collapses whitespace, trims, and removes spaces around `:` and `->`
+    /// so that different textual variants map to the same comparison key.
     func canonicalizedSignatureKey() -> String {
         self
             .replacingOccurrences(of: "\n", with: " ")
@@ -173,23 +157,25 @@ private extension String {
             .replacingOccurrences(of: " -> ", with: "->")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    /// Грубая эвристика «похоже на сигнатуру/заголовок», а не просто имя.
+
+    /// Rough heuristic: returns `true` if the string looks like a function
+    /// signature/header rather than just a bare name.
     var isProbablySignatureLike: Bool {
-        // Начинается с `func` — точно сигнатура
+        // Starts with `func` — definitely a signature
         if self.hasPrefix("func") { return true }
-        
-        // Есть круглые скобки (параметры) или generics `<...>`
+
+        // Has parameter parentheses or generics `<...>`
         if self.contains("(") && self.contains(")") { return true }
         if self.contains("<") && self.contains(">") { return true }
-        
-        // Наличие меток async/throws/-> тоже сигнал
+
+        // Presence of async/throws/-> is also a signal
         if self.contains("->") || self.contains("throws") || self.contains("rethrows") || self.contains("async") {
             return true
         }
-        
-        // Есть where-ограничения
+
+        // Contains a `where` clause
         if self.contains(" where ") { return true }
-        
+
         return false
     }
 }

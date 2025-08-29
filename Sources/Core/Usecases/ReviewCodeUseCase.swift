@@ -8,27 +8,36 @@
 import Foundation
 import os.log
 
+/// Use case: generates a concise, plain-text code review for a single Swift function.
 public protocol ReviewCodeUseCase {
-    func generateSingleFunctionReview(functionSource: String,
-                                      functionSignature: String,
-                                      promptMaxLength: Int) async throws -> String
+    /// Produces a focused review of a single function.
+    /// - Parameters:
+    ///   - functionSource: Raw Swift source of the function declaration and body.
+    ///   - functionSignature: Canonical signature string used for context.
+    ///   - promptMaxLength: Maximum allowed length after prompt sanitization.
+    /// - Returns: Plain-text review; if there are no issues, a short positive sentence.
+    func generateSingleFunctionReview(
+        functionSource: String,
+        functionSignature: String,
+        promptMaxLength: Int
+    ) async throws -> String
 }
 
+/// Default implementation of `ReviewCodeUseCase` backed by an `OllamaBridgeProtocol`.
 public struct ReviewCodeUseCaseImpl: ReviewCodeUseCase {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
-    private let logger = Logger(subsystem: "SwiftMind", category: "ReviewCode")
 
+    /// Instruction prompt used as a role model for reviews.
+    private let roleModelPromptInstruction: String = """
+    You are a Senior iOS Developer who writes clean, maintainable Swift code.
+    Follow Apple's coding guidelines and best practices.
+    """
+
+    /// Creates a code-review use case.
     public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
         self.ollama = ollama
         self.config = config
-    }
-
-    private var roleModelPromptInstruction: String {
-        """
-        You are a Senior iOS Developer who writes clean, maintainable Swift code.
-        Follow Apple's coding guidelines and best practices.
-        """
     }
 
     public func generateSingleFunctionReview(

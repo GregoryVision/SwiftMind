@@ -61,7 +61,7 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "readCode"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "loadFileLines"
@@ -69,6 +69,14 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "sanitizePath"
+            isEnabled = "NO">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "--dry-run"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "true"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

@@ -9,22 +9,34 @@ import Foundation
 import os.log
 import Darwin
 
-@available(macOS 13.0, *)
+/// A minimal transport to the local Ollama CLI.
 public protocol OllamaBridgeProtocol {
+    /// Sends a prompt to a specific model and returns raw model output as a `String`.
+    /// - Parameters:
+    ///   - prompt: Full prompt text (already sanitized by the caller).
+    ///   - model: Model name/tag understood by the Ollama CLI.
     func send(prompt: String, model: String) async throws -> String
 }
 
-@available(macOS 13.0, *)
+/// Concrete Ollama bridge that shells out to the `ollama` CLI and handles retries/timeouts.
+///
+/// Notes:
+/// - Uses a child `Process` to run `ollama run <model>`.
+/// - Protects the child process with a lock so it can be cancelled on timeout.
+/// - Marked `@unchecked Sendable` because `Process` and `NSLock` are not strictly Sendable.
 public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     private let logger = Logger(subsystem: "SwiftMind", category: "OllamaBridge")
     private let maxRetries: Int
     private let timeoutSeconds: Double
 
-    // Текущий подпроцесс (для отмены/таймаута)
+    // Current child process (for cancellation/timeout)
     private var currentProcess: Process?
     private let processLock = NSLock()
 
+    /// - Parameters:
+    ///   - maxRetries: Number of retry attempts on failures.
+    ///   - timeoutSeconds: Overall timeout for a single `ollama run` invocation.
     public init(maxRetries: Int = 3, timeoutSeconds: Double = 60) {
         self.maxRetries = maxRetries
         self.timeoutSeconds = timeoutSeconds
@@ -32,6 +44,11 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     // MARK: - Public
 
+    /// Sends a prompt to Ollama and returns the raw model output.
+    ///
+    /// Performs:
+    /// 1) CLI presence check, 2) model existence check, 3) execution with retry + exponential backoff,
+    /// 4) a race between execution and a timeout task, and 5) graceful cancellation on timeout.
     public func send(prompt: String, model: String = "codellama") async throws -> String {
         try await validateOllamaInstallation()
         try await ensureModelExists(model)
@@ -54,8 +71,8 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 logger.warning("Attempt \(attempt) failed: \(error.localizedDescription, privacy: .public)")
 
                 if attempt < maxRetries {
-                    // экспонента + джиттер
-                    let backoff = min(8.0, pow(2.0, Double(attempt - 1))) // 1,2,4,8
+                    // Exponential backoff + jitter
+                    let backoff = min(8.0, pow(2.0, Double(attempt - 1))) // 1, 2, 4, 8
                     let jitter = Double.random(in: 0...0.5)
                     let sleepSec = backoff + jitter
                     logger.info("Retrying in \(sleepSec, privacy: .public)s...")
@@ -69,10 +86,12 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     // MARK: - Validation
 
+    /// Ensures the `ollama` CLI is available by invoking `ollama --version`.
     private func validateOllamaInstallation() async throws {
         _ = try await runQuick(["ollama", "--version"])
     }
 
+    /// Ensures the requested model exists locally by invoking `ollama show <model>`.
     private func ensureModelExists(_ model: String) async throws {
         do {
             _ = try await runQuick(["ollama", "show", model])
@@ -83,9 +102,10 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     // MARK: - Timeout race
 
+    /// Runs the model with a timeout race: whichever finishes first (run or timeout) wins.
     private func executeOllama(prompt: String, model: String) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
-            let bridge = self  // сильная ссылка, чтобы не отвалиться в середине
+            let bridge = self  // strong ref while tasks run
             group.addTask {
                 try await bridge.runOllama(prompt: prompt, model: model)
             }
@@ -94,7 +114,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 throw SwiftMindError.timeout(timeoutSeconds)
             }
 
-            defer { group.cancelAll() } // гарантированно отменим «проигравшего»
+            defer { group.cancelAll() } // ensure the loser is cancelled
 
             guard let first = try await group.next() else {
                 throw SwiftMindError.ollamaExecutionFailed(-1, "Task group returned no result")
@@ -105,6 +125,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     // MARK: - Core execution (stdin + background readers + cancellation)
 
+    /// Spawns `ollama run` and streams stdout/stderr. Supports cancellation via `withTaskCancellationHandler`.
     private func runOllama(prompt: String, model: String) async throws -> String {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
@@ -112,11 +133,11 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
                 task.arguments = ["ollama", "run", model]
 
-                // stdin — пишем промпт
+                // stdin — write prompt
                 let stdin = Pipe()
                 task.standardInput = stdin
 
-                // stdout/stderr — читаем в фоновых задачах, без readabilityHandler
+                // stdout/stderr — read in background tasks (no readabilityHandler)
                 let stdoutPipe = Pipe()
                 let stderrPipe = Pipe()
                 task.standardOutput = stdoutPipe
@@ -125,7 +146,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 let stdoutFH = stdoutPipe.fileHandleForReading
                 let stderrFH = stderrPipe.fileHandleForReading
 
-                // Фоновые чтения (каждое в свой локальный буфер)
+                // Background reads (each into a local buffer)
                 let outTask = Task.detached(priority: .utility) { () -> Data in
                     var buf = Data()
                     while true {
@@ -147,24 +168,28 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 }
 
                 task.terminationHandler = { [weak self] process in
-                    // Завершение: закрыть дескрипторы, дождаться фоновых задач, собрать вывод
+                    // Completion: close handles, await background readers, assemble output
                     stdoutFH.closeFile()
                     stderrFH.closeFile()
 
-                    // Ждём сбор вывода в асинхронном контексте
                     Task {
-                        let outData = await outTask.value 
+                        let outData = await outTask.value
                         let errData = await errTask.value
 
-                        let out = String(decoding: outData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                        let err = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                        let out = String(decoding: outData, as: UTF8.self)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let err = String(decoding: errData, as: UTF8.self)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
 
                         self?.setCurrentProcess(nil)
 
                         if process.terminationStatus == 0 {
                             cont.resume(returning: out)
                         } else {
-                            cont.resume(throwing: SwiftMindError.ollamaExecutionFailed(process.terminationStatus, err.isEmpty ? "Unknown error" : err))
+                            cont.resume(throwing: SwiftMindError.ollamaExecutionFailed(
+                                process.terminationStatus,
+                                err.isEmpty ? "Unknown error" : err
+                            ))
                         }
                     }
                 }
@@ -173,7 +198,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                     try task.run()
                     self.setCurrentProcess(task)
 
-                    // Пишем промпт и закрываем stdin
+                    // Write prompt then close stdin
                     if let data = prompt.data(using: .utf8) {
                         stdin.fileHandleForWriting.write(data)
                     }
@@ -185,7 +210,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 }
             }
         } onCancel: {
-            // Отмена/таймаут: попробовать мягко завершить, затем SIGKILL
+            // Cancellation/timeout: try to terminate gracefully, then SIGKILL
             guard let proc = getCurrentProcess() else { return }
             logger.warning("Cancelling ollama process...")
             if proc.isRunning {
@@ -202,6 +227,7 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
 
     // MARK: - Helpers
 
+    /// Runs a short synchronous command and returns stdout (throws on non-zero exit).
     @discardableResult
     private func runQuick(_ args: [String]) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
@@ -223,7 +249,10 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
                 if process.terminationStatus == 0 {
                     cont.resume(returning: stdout)
                 } else {
-                    cont.resume(throwing: SwiftMindError.ollamaExecutionFailed(process.terminationStatus, stderr.isEmpty ? "Unknown error" : stderr))
+                    cont.resume(throwing: SwiftMindError.ollamaExecutionFailed(
+                        process.terminationStatus,
+                        stderr.isEmpty ? "Unknown error" : stderr
+                    ))
                 }
             }
 
@@ -235,12 +264,14 @@ public final class OllamaBridge: OllamaBridgeProtocol, @unchecked Sendable {
         }
     }
 
+    /// Stores the current child `Process` under lock.
     private func setCurrentProcess(_ p: Process?) {
         processLock.lock()
         currentProcess = p
         processLock.unlock()
     }
 
+    /// Reads the current child `Process` under lock.
     private func getCurrentProcess() -> Process? {
         processLock.lock()
         let p = currentProcess

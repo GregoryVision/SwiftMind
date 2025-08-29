@@ -8,33 +8,53 @@
 import Foundation
 import os.log
 
+/// Use case: generates unit tests for Swift code.
 public protocol GenerateTestsUseCase {
-    func forFunction(code: String,
-                     funcName: String,
-                     funcSign: String,
-                     promptMaxLength: Int,
-                     customPrompt: String?) async throws -> String
+    /// Generates XCTest cases for a single function.
+    /// - Parameters:
+    ///   - code: Full source code containing the function.
+    ///   - funcName: Name of the target function.
+    ///   - funcSign: Full canonical signature of the target function.
+    ///   - promptMaxLength: Maximum allowed length for the prompt after sanitization.
+    ///   - customPrompt: Optional extra instruction provided by the user.
+    /// - Returns: Pure Swift XCTest code for the function under test.
+    func forFunction(
+        code: String,
+        funcName: String,
+        funcSign: String,
+        promptMaxLength: Int,
+        customPrompt: String?
+    ) async throws -> String
 
-    func forEntireFile(code: String,
-                       promptMaxLength: Int,
-                       customPrompt: String?,
-                       additionalContext: String?) async throws -> String
+    /// Generates XCTest cases for the main type in an entire file.
+    /// - Parameters:
+    ///   - code: Full source code of the file.
+    ///   - promptMaxLength: Maximum allowed length for the prompt after sanitization.
+    ///   - customPrompt: Optional extra instruction provided by the user.
+    ///   - additionalContext: Optional supporting files/content used only for context.
+    /// - Returns: Pure Swift XCTest code for the main type in the file.
+    func forEntireFile(
+        code: String,
+        promptMaxLength: Int,
+        customPrompt: String?,
+        additionalContext: String?
+    ) async throws -> String
 }
 
+/// Default implementation of `GenerateTestsUseCase` backed by an `OllamaBridgeProtocol`.
 public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
     private let ollama: OllamaBridgeProtocol
     private let config: SwiftMindConfigProtocol
     private let logger = Logger(subsystem: "SwiftMind", category: "GenerateTests")
     
-    private var roleModelPromptInstruction: String {
-        """
-        You are a Senior iOS Developer who writes clean, maintainable Swift code.
-        You must output only valid Swift XCTest code. Never explain or add comments.
-        """
-    }
-    
-    private var commonTestGuidelines: String {
+    /// Instruction prompt used as a role model for generated tests.
+    private let roleModelPromptInstruction: String = """
+    You are a Senior iOS Developer who writes clean, maintainable Swift code.
+    You must output only valid Swift XCTest code. Never explain or add comments.
     """
+    
+    /// Common test generation guidelines for consistency.
+    private let commonTestGuidelines: String = """
     Write unit tests using XCTest.
 
     STRICT OUTPUT:
@@ -50,18 +70,20 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
     - Use XCTestExpectation or async/await for async code.
     - Use XCTAssertThrowsError for throwing paths.
     """
-    }
-
+    
+    /// Creates a test generation use case.
     public init(ollama: OllamaBridgeProtocol, config: SwiftMindConfigProtocol) {
         self.ollama = ollama
         self.config = config
     }
 
-    public func forFunction(code: String,
-                            funcName: String,
-                            funcSign: String,
-                            promptMaxLength: Int,
-                            customPrompt: String?) async throws -> String {
+    public func forFunction(
+        code: String,
+        funcName: String,
+        funcSign: String,
+        promptMaxLength: Int,
+        customPrompt: String?
+    ) async throws -> String {
         logger.info("Generating tests for function: \(funcName)")
 
         let taskInstruction = """
@@ -69,31 +91,34 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
         Start with: class \(funcName)Tests: XCTestCase {
         """
 
-        let cusPrompt = customPrompt.flatMap {
+        let cusPrompt = customPrompt.map {
             """
-            This is custom prompt from user:
+            This is a custom prompt from the user:
 
             \($0)
             """
         }
 
-        let prompt = [roleModelPromptInstruction,
-                      commonTestGuidelines,
-                      taskInstruction,
-                      "Source code:\n\n\(code)",
-                      cusPrompt]
-            .compactMap { $0 }
-            .joined(separator: "\n\n")
+        let prompt = [
+            roleModelPromptInstruction,
+            commonTestGuidelines,
+            taskInstruction,
+            "Source code:\n\n\(code)",
+            cusPrompt
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n\n")
         
         let (sanitizedPrompt, _) = try PromptSanitizer.sanitize(prompt, maxLength: promptMaxLength)
-        
         return try await ollama.send(prompt: sanitizedPrompt, model: config.defaultModel)
     }
 
-    public func forEntireFile(code: String,
-                              promptMaxLength: Int,
-                              customPrompt: String?,
-                              additionalContext: String?) async throws -> String {
+    public func forEntireFile(
+        code: String,
+        promptMaxLength: Int,
+        customPrompt: String?,
+        additionalContext: String?
+    ) async throws -> String {
         logger.info("Generating tests for entire file")
 
         let taskInstruction = """
@@ -110,20 +135,20 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
         - Do NOT include imports, comments, explanations, or markdown fences.
         """
 
-        let addCtx = additionalContext.flatMap {
+        let addCtx = additionalContext.map {
             """
-            "ADDITIONAL CONTEXT (STRICT RULES):
+            ADDITIONAL CONTEXT (STRICT RULES):
             - Use ONLY for understanding environment.
             - NEVER generate tests for this section.
-            - Tests must be generated ONLY for the main provided source file."
+            - Tests must be generated ONLY for the main provided source file.
 
             \($0)
             """
         }
 
-        let cusPrompt = customPrompt.flatMap {
+        let cusPrompt = customPrompt.map {
             """
-            This is custom prompt from user:
+            This is a custom prompt from the user:
 
             \($0)
 
@@ -131,14 +156,16 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
             """
         }
         
-        let prompt = [addCtx,
-                      "Source code:\n\n\(code)",
-                      cusPrompt,
-                      roleModelPromptInstruction,
-                      commonTestGuidelines,
-                      taskInstruction]
-            .compactMap { $0 }
-            .joined(separator: "\n\n")
+        let prompt = [
+            addCtx,
+            "Source code:\n\n\(code)",
+            cusPrompt,
+            roleModelPromptInstruction,
+            commonTestGuidelines,
+            taskInstruction
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n\n")
         
         let (sanitizedPrompt, _) = try PromptSanitizer.sanitize(prompt, maxLength: promptMaxLength)
         return try await ollama.send(prompt: sanitizedPrompt, model: config.defaultModel)
