@@ -1,11 +1,3 @@
-//
-//  README.md
-//  SwiftMind
-//
-//  Created by Gregory Tolkachev on 20.08.2025.
-//
-
-
 # SwiftMind 🧠
 
 **AI-powered CLI toolkit for Swift developers** — generate unit tests, documentation, reviews, and explanations for your Swift code using [Ollama](https://ollama.com/) and local LLMs.
@@ -162,6 +154,11 @@ Run checks:
 ```bash
 make doctor
 ```
+
+---
+
+## 🤝 Contributing
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
