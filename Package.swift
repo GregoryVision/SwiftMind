@@ -36,5 +36,9 @@ let package = Package(
                     .copy("Templates")
                 ]
         ),
+        .testTarget(
+          name: "CoreTests",
+          dependencies: ["Core"]
+        )
     ]
 )

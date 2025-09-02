@@ -79,28 +79,27 @@ public extension FunctionDeclSyntax {
     /// func foo(bar:Int) ->String
     /// ```
     func canonicalSignatureKey() -> String {
-        var parts: [String] = []
+        var s = "func \(name.text)"
 
-        parts.append("func")
-        parts.append(name.text)
-
-        // Parameters
+        // parameters
         let items = signature.parameterClause.parameters.map { p -> String in
             let label = p.firstName.text
             let type = p.type.trimmedDescription.replacingOccurrences(of: " ", with: "")
             return "\(label):\(type)"
-        }
-        parts.append("(\(items.joined(separator: ",")))")
+        }.joined(separator: ",")
+
+        s += "(\(items))"
 
         // async / throws
-        if signature.effectSpecifiers?.asyncSpecifier != nil { parts.append("async") }
-        if signature.effectSpecifiers?.throwsSpecifier != nil { parts.append("throws") }
+        if signature.effectSpecifiers?.asyncSpecifier != nil { s += " async" }
+        if signature.effectSpecifiers?.throwsSpecifier != nil { s += " throws" }
 
-        // Return type
+        // return type (no space before arrow)
         if let ret = signature.returnClause?.type.trimmedDescription {
-            parts.append("->\(ret.replacingOccurrences(of: " ", with: ""))")
+            let retNoSpaces = ret.replacingOccurrences(of: " ", with: "")
+            s += "->\(retNoSpaces)"
         }
 
-        return parts.joined(separator: " ")
+        return s
     }
 }

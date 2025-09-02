@@ -65,8 +65,7 @@ struct Test: AsyncParsableCommand {
             try await generateTests(
                 for: codeProcessingResult.sanitizedCode,
                 fileName: codeProcessingResult.fileName,
-                testsDir: testsDir,
-                moduleName: moduleName
+                testsDir: testsDir
             )
         } catch {
             try SwiftMindError.handle(error)
@@ -83,8 +82,7 @@ struct Test: AsyncParsableCommand {
     private func generateTests(
         for code: String,
         fileName: String,
-        testsDir: URL,
-        moduleName: String?
+        testsDir: URL
     ) async throws {
         let collector = FunctionCollector.collect(from: code, topLevelOnly: false)
         Self.logger.info("Found \(collector.functions.count) functions")
