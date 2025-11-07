@@ -19,7 +19,7 @@ struct SwiftMindCLI: AsyncParsableCommand {
     /// Command-line configuration, including available subcommands.
     static let configuration = CommandConfiguration(
         abstract: "AI CLI for Swift developers",
-        subcommands: [Test.self, Review.self, InsertDocs.self, Explain.self, Init.self],
+        subcommands: [Test.self, Review.self, InsertDocs.self, Explain.self, Init.self, Fix.self],
         defaultSubcommand: Explain.self
     )
 
@@ -44,7 +44,8 @@ struct SwiftMindCLI: AsyncParsableCommand {
             generateTests: GenerateTestsUseCaseImpl(ollama: ollama, config: config),
             reviewCode: ReviewCodeUseCaseImpl(ollama: ollama, config: config),
             explainCode: ExplainCodeUseCaseImpl(ollama: ollama, config: config),
-            generateDocs: GenerateDocumentationUseCaseImpl(ollama: ollama, config: config)
+            generateDocs: GenerateDocumentationUseCaseImpl(ollama: ollama, config: config),
+            fixCode: FixCodeUseCaseImpl(ollama: ollama, config: config)
         )
     }
 }

@@ -7,7 +7,6 @@
 
 import Foundation
 import os.log
-import Darwin
 
 /// A minimal transport to the local Ollama CLI.
 public protocol OllamaBridgeProtocol {

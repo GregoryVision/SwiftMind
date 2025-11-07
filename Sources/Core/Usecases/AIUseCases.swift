@@ -18,6 +18,8 @@ public protocol AIUseCasesProtocol {
     var explainCode: ExplainCodeUseCase { get }
     /// Generates documentation comments for Swift declarations.
     var generateDocs: GenerateDocumentationUseCase { get }
+    /// Fixes code
+    var fixCode: FixCodeUseCase { get }
 }
 
 /// Concrete container of all AI use cases.
@@ -29,17 +31,20 @@ public struct AIUseCases: AIUseCasesProtocol {
     public let reviewCode: ReviewCodeUseCase
     public let explainCode: ExplainCodeUseCase
     public let generateDocs: GenerateDocumentationUseCase
+    public let fixCode: FixCodeUseCase
 
     /// Initializes the container with specific implementations.
     public init(
         generateTests: GenerateTestsUseCase,
         reviewCode: ReviewCodeUseCase,
         explainCode: ExplainCodeUseCase,
-        generateDocs: GenerateDocumentationUseCase
+        generateDocs: GenerateDocumentationUseCase,
+        fixCode: FixCodeUseCase
     ) {
         self.generateTests = generateTests
         self.reviewCode = reviewCode
         self.explainCode = explainCode
         self.generateDocs = generateDocs
+        self.fixCode = fixCode
     }
 }

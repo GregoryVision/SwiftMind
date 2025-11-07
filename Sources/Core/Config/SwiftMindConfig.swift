@@ -60,7 +60,7 @@ public struct SwiftMindConfig: SwiftMindConfigProtocol, Codable, Sendable {
     /// Creates a config object from values or defaults.
     public init(
         testsDirectory: String = "",
-        defaultModel: String = "qwen2.5-coder:14b",
+        defaultModel: String = "qwen3-coder:30b",
         tokenLimit: Int = 32_000,
         maxRetries: Int = 3,
         timeoutSeconds: Double = 240.0,

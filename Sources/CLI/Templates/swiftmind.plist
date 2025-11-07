@@ -9,7 +9,7 @@
 	<key>testsDirectory</key>
 	<string></string>
 	<key>defaultModel</key>
-	<string>qwen2.5-coder:14b</string>
+	<string>qwen3-coder:30b</string>
 	<key>tokenLimit</key>
 	<integer>32000</integer>
 	<key>documentationDeclarations</key>

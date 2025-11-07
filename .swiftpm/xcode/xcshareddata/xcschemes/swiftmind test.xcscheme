@@ -61,6 +61,10 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "readCode"
+            isEnabled = "NO">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "validateFile"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument

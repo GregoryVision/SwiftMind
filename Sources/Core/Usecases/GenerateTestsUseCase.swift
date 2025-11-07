@@ -65,7 +65,6 @@ public struct GenerateTestsUseCaseImpl: GenerateTestsUseCase {
     - Do NOT invent new methods/types/initializers/error cases.
     - Do NOT call functions with missing/extra params; respect existing signatures.
     - Do NOT change access modifiers or code structure.
-    - Do NOT add @testable import.
     - Prefer behavior-based tests; include edge cases and at least one negative case.
     - Use XCTestExpectation or async/await for async code.
     - Use XCTAssertThrowsError for throwing paths.

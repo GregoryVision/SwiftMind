@@ -56,7 +56,7 @@
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "/Users/tolkachevgregory/Development/SwiftMind/Sources/Core/FileHelper/FileHelper\ 2.swift"
+            argument = "/Users/tolkachevgregory/Development/SwiftMind/Sources/Core/FileHelper/FileHelper.swift"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
